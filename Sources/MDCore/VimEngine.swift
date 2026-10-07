@@ -70,8 +70,11 @@ public final class VimEngine {
         let cursor = selection.location
         let ln = TextNav.line(at: cursor, in: text)
         let target = cursor > ln.start ? TextNav.previousGrapheme(before: cursor, in: text) : cursor
-        return [.setMode(.normal), .setSelection(NSRange(location: target, length: 0))]
+        return [.setMode(.normal), Self.caret(target)]
     }
+
+    /// Collapsed selection (caret) at UTF-16 offset `p`.
+    private static func caret(_ p: Int) -> VimAction { .setSelection(NSRange(location: p, length: 0)) }
 
     private static func isEscape(_ key: VimKey) -> Bool {
         key == .escape || (key.control && (key.chars == "[" || key.chars == "\u{1b}"))
@@ -187,7 +190,7 @@ public final class VimEngine {
         if position == cursor, motion.beepsWhenStuck { return [.beep] }
         preferredColumn = target.column
         columnAnchor = position
-        return [.setSelection(NSRange(location: position, length: 0))]
+        return [Self.caret(position)]
     }
 
     // MARK: operators
@@ -233,13 +236,13 @@ public final class VimEngine {
         switch op {
         case .yank:
             let position = TextNav.normalCursor(range.location, in: text)
-            return [.copyToPasteboard(removed)] + finish(.normal) + [.setSelection(NSRange(location: position, length: 0))]
+            return [.copyToPasteboard(removed)] + finish(.normal) + [Self.caret(position)]
         case .delete:
             let after = text.replacingCharacters(in: range, with: "") as NSString
             let position = TextNav.normalCursor(range.location, in: after)
-            return [.replace(range, "")] + finish(.normal) + [.setSelection(NSRange(location: position, length: 0))]
+            return [.replace(range, "")] + finish(.normal) + [Self.caret(position)]
         case .change:
-            return [.replace(range, "")] + finish(.insert) + [.setSelection(NSRange(location: range.location, length: 0))]
+            return [.replace(range, "")] + finish(.insert) + [Self.caret(range.location)]
         }
     }
 
@@ -252,7 +255,7 @@ public final class VimEngine {
         switch op {
         case .yank:
             let position = TextNav.normalCursor(yankCursor, in: text)
-            return [.copyToPasteboard(lines)] + finish(.normal) + [.setSelection(NSRange(location: position, length: 0))]
+            return [.copyToPasteboard(lines)] + finish(.normal) + [Self.caret(position)]
         case .delete:
             var range = whole
             if !last.hasNewline, first.start > 0 {
@@ -263,10 +266,10 @@ public final class VimEngine {
             let after = text.replacingCharacters(in: range, with: "") as NSString
             let ln = TextNav.line(at: range.location, in: after)
             let position = TextNav.firstNonBlank(of: ln, in: after)
-            return [.replace(range, "")] + finish(.normal) + [.setSelection(NSRange(location: position, length: 0))]
+            return [.replace(range, "")] + finish(.normal) + [Self.caret(position)]
         case .change:
             let range = NSRange(location: first.start, length: last.contentsEnd - first.start)
-            return [.replace(range, "")] + finish(.insert) + [.setSelection(NSRange(location: first.start, length: 0))]
+            return [.replace(range, "")] + finish(.insert) + [Self.caret(first.start)]
         }
     }
 
@@ -287,13 +290,13 @@ public final class VimEngine {
             }
             let result = text.replacingCharacters(in: NSRange(location: at, length: 0), with: insert) as NSString
             let position = TextNav.firstNonBlank(of: TextNav.line(at: firstLine, in: result), in: result)
-            return [.replace(NSRange(location: at, length: 0), insert), .setSelection(NSRange(location: position, length: 0))]
+            return [.replace(NSRange(location: at, length: 0), insert), Self.caret(position)]
         }
         let at = after && cursor < ln.contentsEnd ? TextNav.nextGrapheme(after: cursor, in: text) : cursor
         let result = text.replacingCharacters(in: NSRange(location: at, length: 0), with: chunk) as NSString
         let end = at + (chunk as NSString).length
         let position = TextNav.normalCursor(TextNav.previousGrapheme(before: end, in: result), in: result)
-        return [.replace(NSRange(location: at, length: 0), chunk), .setSelection(NSRange(location: position, length: 0))]
+        return [.replace(NSRange(location: at, length: 0), chunk), Self.caret(position)]
     }
 
     // MARK: visual mode
@@ -358,7 +361,7 @@ public final class VimEngine {
 
     private func exitVisual() -> [VimAction] {
         clearPending()
-        return finish(.normal) + [.setSelection(NSRange(location: visualHead, length: 0))]
+        return finish(.normal) + [Self.caret(visualHead)]
     }
 
     /// The selection to show: characters from anchor to cursor, both included,
@@ -450,7 +453,7 @@ public final class VimEngine {
         default: position = cursor  // "i"
         }
         mode = .insert
-        return actions + [.setMode(.insert), .setSelection(NSRange(location: position, length: 0))]
+        return actions + [.setMode(.insert), Self.caret(position)]
     }
 
     private static func firstNonBlankOrEnd(_ ln: TextLine, _ text: NSString) -> Int {
@@ -469,7 +472,7 @@ public final class VimEngine {
         setRegister(text.substring(with: range), linewise: false)
         let after = text.replacingCharacters(in: range, with: "") as NSString
         let position = TextNav.normalCursor(cursor, in: after)
-        return [.replace(range, ""), .setSelection(NSRange(location: position, length: 0))]
+        return [.replace(range, ""), Self.caret(position)]
     }
 
     // MARK: state helpers

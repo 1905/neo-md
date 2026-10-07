@@ -140,6 +140,13 @@ final class MarkdownDocument: NSDocument {
             postDiskChange(deleted: false)
             return
         }
+        revertToDisk()
+    }
+
+    /// Replaces `text` with the file on disk. Unsaved edits are lost. Errors are shown to the user.
+    @MainActor
+    func revertToDisk() {
+        guard let url = fileURL else { return }
         do {
             try revert(toContentsOf: url, ofType: fileType ?? "net.daringfireball.markdown")
         } catch {
@@ -154,7 +161,7 @@ final class MarkdownDocument: NSDocument {
 
     /// Every "\n" not already after "\r" becomes "\r\n". The text view may insert lone "\n".
     static func convertingLoneLFToCRLF(_ data: Data) -> Data {
-        var out = Data()
+        var out = [UInt8]()
         out.reserveCapacity(data.count + data.count / 32)
         var previous: UInt8 = 0
         for byte in data {
@@ -162,6 +169,6 @@ final class MarkdownDocument: NSDocument {
             out.append(byte)
             previous = byte
         }
-        return out
+        return Data(out)
     }
 }

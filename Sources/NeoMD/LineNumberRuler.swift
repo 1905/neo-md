@@ -47,13 +47,13 @@ final class LineNumberRuler: NSRulerView {
         let origin = textView.textContainerOrigin
         let visible = textView.visibleRect.offsetBy(dx: -origin.x, dy: -origin.y)
         let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
-        let starts = textView.lineStarts
+        let lineCount = textView.lineStarts.count
         let current = textView.lineNumber(at: textView.selectedRange().location)
 
         layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, glyphRange, _ in
             let charIndex = layoutManager.characterIndexForGlyph(at: glyphRange.location)
             let line = textView.lineNumber(at: charIndex)
-            guard starts[line - 1] == charIndex else { return }   // a wrapped continuation
+            guard textView.lineStart(ofLine: line) == charIndex else { return }   // a wrapped continuation
             let offset = layoutManager.location(forGlyphAt: glyphRange.location).y
             self.baselineOffset = offset
             self.drawNumber(line, baseline: fragment.minY + offset, current: line == current, in: textView)
@@ -64,7 +64,7 @@ final class LineNumberRuler: NSRulerView {
             let fragment = layoutManager.extraLineFragmentRect
             if fragment.height > 0, fragment.intersects(visible) {
                 let offset = baselineOffset ?? layoutManager.defaultBaselineOffset(for: EditorStyle.font)
-                drawNumber(starts.count, baseline: fragment.minY + offset, current: starts.count == current,
+                drawNumber(lineCount, baseline: fragment.minY + offset, current: lineCount == current,
                            in: textView)
             }
         }

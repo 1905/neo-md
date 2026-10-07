@@ -11,7 +11,6 @@ struct TextLine: Equatable {
     /// True if a `\n` ends the line, so another line follows.
     let hasNewline: Bool
 
-    var contents: NSRange { NSRange(location: start, length: contentsEnd - start) }
     var isEmpty: Bool { contentsEnd == start }
 }
 
@@ -62,9 +61,6 @@ enum TextNav {
         return TextLine(start: start, contentsEnd: contentsEnd,
                         end: hasNewline ? newlineAt + 1 : newlineAt, hasNewline: hasNewline)
     }
-
-    /// Contents of the line at `i`, without the terminator.
-    static func lineRange(at i: Int, in s: NSString) -> NSRange { line(at: i, in: s).contents }
 
     /// Zero-based index of the line that contains `i`.
     static func lineIndex(at i: Int, in s: NSString) -> Int {

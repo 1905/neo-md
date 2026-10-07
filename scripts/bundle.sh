@@ -3,8 +3,8 @@
 # Usage: scripts/bundle.sh          (NO_QL=1 skips the Quick Look extension)
 set -euo pipefail
 
-# Move old build output to /tmp/trash instead of deleting it.
-trash() { if [ -e "$1" ]; then mkdir -p /tmp/trash && mv "$1" "/tmp/trash/$(basename "$1").$(date +%Y%m%d-%H%M%S)"; fi; }
+# shellcheck source=scripts/lib.sh
+source "$(dirname "$0")/lib.sh"
 
 cd "$(dirname "$0")/.."
 

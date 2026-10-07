@@ -5,8 +5,6 @@ import AppKit
 /// `showSettings:`, `showFind:`, `selectTab:` (tag = `DocTab.rawValue`), `toggleOutline:`, `renderNow:`.
 @MainActor
 enum MainMenu {
-    static let toggleOutlineTag = 100
-
     static func build() -> NSMenu {
         let main = NSMenu()
         main.addItem(submenuItem(appMenu()))
@@ -80,9 +78,7 @@ enum MainMenu {
             menu.addItem(tabItem)
         }
         menu.addItem(.separator())
-        let outline = item("Hide Outline", Selector(("toggleOutline:")), key: "o", modifiers: [.command, .shift])
-        outline.tag = toggleOutlineTag
-        menu.addItem(outline)
+        menu.addItem(item("Hide Outline", Selector(("toggleOutline:")), key: "o", modifiers: [.command, .shift]))
         menu.addItem(item("Render Now", Selector(("renderNow:")), key: "r"))
         return menu
     }

@@ -8,11 +8,7 @@ final class DiskChangeBanner: NSView {
     enum Kind { case changed, deleted }
 
     /// Light #b25e00, dark #f0a640 (mockup `--warn`).
-    static let warnColor = NSColor(name: "neo-md.warn") { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(srgbRed: 0xf0 / 255, green: 0xa6 / 255, blue: 0x40 / 255, alpha: 1)
-            : NSColor(srgbRed: 0xb2 / 255, green: 0x5e / 255, blue: 0x00 / 255, alpha: 1)
-    }
+    static let warnColor = EditorStyle.dynamic(light: 0xb25e00, dark: 0xf0a640)
 
     var kind: Kind = .changed { didSet { applyKind() } }
     var onKeepMine: (() -> Void)?

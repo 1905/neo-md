@@ -133,7 +133,10 @@ final class SettingsPopover: NSPopover {
     /// Shows "neo-md is the default" or the "Make default" button, plus an
     /// optional error line under the row.
     private func refreshDefaultApp(error: String? = nil) {
-        let isDefault = isDefaultApp()
+        showDefaultState(isDefault: isDefaultApp(), error: error)
+    }
+
+    private func showDefaultState(isDefault: Bool, error: String?) {
         defaultStatus.stringValue = isDefault ? "neo-md is the default" : ""
         defaultStatus.isHidden = !isDefault
         makeDefaultButton.isHidden = isDefault
@@ -165,11 +168,7 @@ final class SettingsPopover: NSPopover {
                 } else {
                     // Show the result of the call even if Launch Services has
                     // not caught up yet.
-                    self.defaultStatus.stringValue = "neo-md is the default"
-                    self.defaultStatus.isHidden = false
-                    self.makeDefaultButton.isHidden = true
-                    self.defaultError.isHidden = true
-                    self.resizeToFit()
+                    self.showDefaultState(isDefault: true, error: nil)
                 }
             }
         }

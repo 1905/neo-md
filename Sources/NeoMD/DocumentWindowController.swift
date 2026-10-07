@@ -1,7 +1,7 @@
 import AppKit
 
 /// One document window: unified toolbar + `ContentController`.
-/// Menu actions reach it through the responder chain. Stubs for later tasks are marked.
+/// Menu actions reach it through the responder chain.
 @MainActor
 final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSMenuItemValidation {
     enum ItemID {
@@ -16,7 +16,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
                                         target: nil, action: #selector(selectTab(_:)))
     let vimChip = ChipButton(title: "VIM")
     private(set) var outlineItem: NSToolbarItem?
-    private(set) var findItem: NSToolbarItem?
     private lazy var settingsPopover = SettingsPopover()
 
     init(document: MarkdownDocument) {
@@ -109,7 +108,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         }
         let vim = contentController.editor.vim
         if vim.onModeChange == nil {
-            vim.onModeChange = { [weak self] _, _ in
+            vim.onModeChange = { [weak self] in
                 self?.updateModeSlot()
                 // Visual-line head moves can leave the selection unchanged; Ln/Col follows the head.
                 self?.contentController.updateStatus()
@@ -163,7 +162,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
             item.isBordered = true
             item.autovalidates = false
             item.isEnabled = true
-            findItem = item
         default:
             return nil
         }
@@ -225,8 +223,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         case #selector(selectTab(_:)):
             menuItem.state = menuItem.tag == contentController.currentTab.rawValue ? .on : .off
             return DocTab(rawValue: menuItem.tag) != nil
-        case #selector(renderNow(_:)), #selector(showSettings(_:)), #selector(showFind(_:)):
-            return true
         case #selector(toggleOutline(_:)):
             menuItem.title = Settings.shared.outlineVisible ? "Hide Outline" : "Show Outline"
             return contentController.currentTab == .render

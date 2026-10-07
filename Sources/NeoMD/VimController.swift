@@ -39,8 +39,8 @@ final class VimController: NSObject {
         }
     }
 
-    /// Mode + command line, for the status bar. Called after every handled key and on toggle.
-    var onModeChange: ((VimMode, String?) -> Void)?
+    /// Mode or command line may have changed (read `mode`, `commandLine`). Called after every handled key and on toggle.
+    var onModeChange: (() -> Void)?
 
     var mode: VimMode { engine.mode }
     var commandLine: String? { engine.commandLine }
@@ -150,6 +150,6 @@ final class VimController: NSObject {
 
     private func notify() {
         textView?.vimStateDidChange()
-        onModeChange?(engine.mode, engine.commandLine)
+        onModeChange?()
     }
 }

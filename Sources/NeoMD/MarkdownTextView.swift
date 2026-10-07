@@ -155,6 +155,11 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
         return low + 1
     }
 
+    /// UTF-16 offset where the 1-based logical `line` starts; 0 if the line does not exist.
+    func lineStart(ofLine line: Int) -> Int {
+        line >= 1 && line <= lineStarts.count ? lineStarts[line - 1] : 0
+    }
+
     /// One pass over the text: line starts and the fence fingerprint.
     private func rebuildLineIndex(_ text: NSString) {
         let length = text.length
@@ -276,14 +281,13 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
 
     /// Rect (view coordinates, full width) of the line fragments of the cursor's logical line.
     func currentLineRect() -> NSRect? {
-        guard let layoutManager, let textContainer, let storage = textStorage else { return nil }
+        guard let layoutManager, textContainer != nil, let storage = textStorage else { return nil }
         let text = storage.string as NSString
         let location = min(selectedRange().location, text.length)
         var rect: NSRect
-        if location == text.length, text.length == 0 || text.character(at: text.length - 1) == 0x0A {
-            layoutManager.ensureLayout(for: textContainer)
-            rect = layoutManager.extraLineFragmentRect
-            guard rect.height > 0 else { return nil }
+        if Self.isOnEmptyLastLine(location, in: text) {
+            guard let fragment = extraLineFragment() else { return nil }
+            rect = fragment
         } else {
             let line = text.lineRange(for: NSRange(location: location, length: 0))
             let glyphs = layoutManager.glyphRange(forCharacterRange: line, actualCharacterRange: nil)
@@ -297,6 +301,19 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
         rect.size.width = bounds.width
         rect.origin.y += textContainerOrigin.y
         return rect
+    }
+
+    /// True when `location` is on the empty line after a trailing newline (or in an empty text).
+    private static func isOnEmptyLastLine(_ location: Int, in text: NSString) -> Bool {
+        location == text.length && (text.length == 0 || text.character(at: text.length - 1) == 0x0A)
+    }
+
+    /// The laid-out empty last line (`extraLineFragmentRect`), or nil when it has no height.
+    private func extraLineFragment() -> NSRect? {
+        guard let layoutManager, let textContainer else { return nil }
+        layoutManager.ensureLayout(for: textContainer)
+        let fragment = layoutManager.extraLineFragmentRect
+        return fragment.height > 0 ? fragment : nil
     }
 
     // MARK: - Vim
@@ -407,10 +424,8 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
                 grapheme = text.substring(with: range)
                 font = storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont ?? metrics
             }
-        } else if text.length == 0 || text.character(at: text.length - 1) == 0x0A {
-            layoutManager.ensureLayout(for: textContainer)
-            let fragment = layoutManager.extraLineFragmentRect
-            guard fragment.height > 0 else { return nil }
+        } else if Self.isOnEmptyLastLine(location, in: text) {
+            guard let fragment = extraLineFragment() else { return nil }
             x = fragment.minX
             baseline = fragment.maxY + metrics.descender
         } else {

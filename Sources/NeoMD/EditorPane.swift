@@ -4,18 +4,15 @@ import AppKit
 ///
 /// It has no state tied to its superview, so one instance can move between the
 /// Raw and Split tabs and keep its cursor and undo stack.
-/// Edits go to `document.text`, then `MarkdownDocument.textDidChange` is posted
-/// and `onTextChange` is called. When the document text changes elsewhere
+/// Edits go to `document.text`, then `MarkdownDocument.textDidChange` is posted.
+/// When the document text changes elsewhere
 /// (read, revert), the pane reloads it.
 final class EditorPane: NSView, NSTextViewDelegate {
     let document: MarkdownDocument
     let scrollView: NSScrollView
     let textView: MarkdownTextView
-    let ruler: LineNumberRuler
     /// Vim key mode for `textView`. It follows `Settings.keyBindings` by itself.
     let vim: VimController
-    /// Called after every user edit, after the document notification.
-    var onTextChange: (() -> Void)?
 
     /// True while this pane posts `textDidChange`, so it does not reload its own edit.
     private var isPushingText = false
@@ -26,7 +23,6 @@ final class EditorPane: NSView, NSTextViewDelegate {
         let scrollView = NSScrollView()
         self.textView = textView
         self.scrollView = scrollView
-        ruler = LineNumberRuler(textView: textView, scrollView: scrollView)
         vim = VimController(textView: textView, document: document)
         super.init(frame: .zero)
         setUp()
@@ -62,7 +58,7 @@ final class EditorPane: NSView, NSTextViewDelegate {
         textView.vimStateDidChange()
         scrollView.documentView = textView
 
-        scrollView.verticalRulerView = ruler
+        scrollView.verticalRulerView = LineNumberRuler(textView: textView, scrollView: scrollView)
         scrollView.hasVerticalRuler = true
         scrollView.rulersVisible = true
 
@@ -104,6 +100,5 @@ final class EditorPane: NSView, NSTextViewDelegate {
         defer { isPushingText = false }
         document.text = textView.string
         NotificationCenter.default.post(name: MarkdownDocument.textDidChange, object: document)
-        onTextChange?()
     }
 }

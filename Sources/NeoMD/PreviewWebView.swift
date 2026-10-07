@@ -77,19 +77,15 @@ final class PreviewWebView: NSView {
         update(html: "<p class=\"error\">\(Self.escapeHTML(message))</p>")
     }
 
-    func find(_ string: String, backwards: Bool) {
-        find(string, backwards: backwards, completion: nil)
-    }
-
     /// Selects the next (or previous) match, wrapping, case-insensitive. `completion(true)` = a match was found.
-    func find(_ string: String, backwards: Bool, completion: ((Bool) -> Void)?) {
+    func find(_ string: String, backwards: Bool, completion: @escaping (Bool) -> Void) {
         guard !string.isEmpty else { return }
         let config = WKFindConfiguration()
         config.backwards = backwards
         config.wraps = true
         config.caseSensitive = false
         webView.find(string, configuration: config) { result in
-            completion?(result.matchFound)
+            completion(result.matchFound)
         }
     }
 
@@ -164,10 +160,8 @@ final class PreviewWebView: NSView {
         }
         guard let folder = documentFolder,
               let file = AssetSchemeHandler.resolve(url, in: folder),
-              ["md", "markdown"].contains(file.pathExtension.lowercased()) else { return }
-        NSDocumentController.shared.openDocument(withContentsOf: file, display: true) { _, _, error in
-            if let error { NSApp.presentError(error) }
-        }
+              WelcomeWindowController.markdownExtensions.contains(file.pathExtension.lowercased()) else { return }
+        WelcomeWindowController.open([file])
     }
 
     // MARK: - Helpers

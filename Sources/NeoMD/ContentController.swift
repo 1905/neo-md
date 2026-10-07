@@ -13,7 +13,7 @@ final class ContentController: NSViewController {
 
     let document: MarkdownDocument
     let preview = PreviewWebView()
-    /// Headings of `lastResult`, Render tab only. Shown while `Settings.shared.outlineVisible`.
+    /// Headings of the last successful render, Render tab only. Shown while `Settings.shared.outlineVisible`.
     let outline = OutlineSidebar()
     let statusBar = StatusBar()
     /// Holds the view of the current tab.
@@ -29,10 +29,6 @@ final class ContentController: NSViewController {
     private var savedEditorOrigin: NSPoint?
 
     private(set) var currentTab: DocTab = .render
-    /// The last successful render. Its `outline` feeds `outline.items`.
-    private(set) var lastResult: RenderResult? {
-        didSet { outline.items = lastResult?.outline ?? [] }
-    }
 
     private(set) lazy var editor = EditorPane(document: document)
     private lazy var splitPreview: PreviewWebView = {
@@ -151,7 +147,7 @@ final class ContentController: NSViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        isLarge = document.text.utf8.count > Self.livePreviewLimit
+        isLarge = Self.exceedsLiveLimit(document.text)
         show(renderPane)
         outline.onSelect = { [weak self] item in self?.preview.scrollToLine(item.line) }
         preview.onVisibleLine = { [weak self] line in self?.outline.highlight(line: line) }
@@ -349,9 +345,18 @@ final class ContentController: NSViewController {
 
     // MARK: - Rendering
 
+    /// `text.utf8.count > livePreviewLimit`, without the UTF-8 count for most texts:
+    /// one UTF-16 unit is 1 to 3 UTF-8 bytes.
+    private static func exceedsLiveLimit(_ text: String) -> Bool {
+        let units = text.utf16.count
+        if units > livePreviewLimit { return true }
+        if units * 3 <= livePreviewLimit { return false }
+        return text.utf8.count > livePreviewLimit
+    }
+
     @objc private func textDidChange(_ note: Notification) {
         textVersion += 1
-        isLarge = document.text.utf8.count > Self.livePreviewLimit
+        isLarge = Self.exceedsLiveLimit(document.text)
         pendingRender?.cancel()
         pendingRender = nil
         if !isLarge && visiblePreview != nil {
@@ -388,8 +393,8 @@ final class ContentController: NSViewController {
 
     private func renderText() {
         if let result = MarkdownRenderer.render(document.text) {
-            lastResult = result
             renderedHTML = result.html
+            outline.items = result.outline
         } else {
             renderedHTML = nil
         }
@@ -480,12 +485,7 @@ final class ContentController: NSViewController {
     /// [Reload]: unsaved edits are lost.
     private func reloadFromDisk() {
         setBannerVisible(false)
-        guard let url = document.fileURL else { return }
-        do {
-            try document.revert(toContentsOf: url, ofType: document.fileType ?? "net.daringfireball.markdown")
-        } catch {
-            document.presentError(error)
-        }
+        document.revertToDisk()
     }
 
     /// After ⌘S the disk holds this window's text again.
@@ -538,9 +538,7 @@ final class ContentController: NSViewController {
             // Vim visual modes: the moving end (head), not the selection start.
             let location = min(editor.vim.visualCursor ?? textView.selectedRange().location, text.length)
             let line = textView.lineNumber(at: location)
-            let starts = textView.lineStarts
-            let lineStart = line - 1 < starts.count ? starts[line - 1] : 0
-            let column = StatusBar.column(in: text, lineStart: lineStart, location: location)
+            let column = StatusBar.column(in: text, lineStart: textView.lineStart(ofLine: line), location: location)
             info = StatusBar.editorInfo(line: line, column: column, lineEnding: document.lineEnding)
         }
         statusBar.info = isLarge ? "Preview paused · \(info)" : info
