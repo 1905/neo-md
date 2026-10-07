@@ -34,8 +34,10 @@ final class LineNumberRuler: NSRulerView {
     @objc private func redraw() { needsDisplay = true }
 
     override func draw(_ dirtyRect: NSRect) {
+        // Since macOS 14 views do not clip to bounds, and the ruler overlaps the
+        // clip view, so `dirtyRect` can span the whole editor. Fill only the gutter.
         (textView?.backgroundColor ?? .textBackgroundColor).setFill()
-        dirtyRect.fill()
+        bounds.intersection(dirtyRect).fill()
         drawHashMarksAndLabels(in: dirtyRect)
     }
 
