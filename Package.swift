@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "neo-md", targets: ["NeoMD"]),
+        .executable(name: "NeoMDQuickLook", targets: ["NeoMDQuickLook"]),
     ],
     dependencies: [
         .package(
@@ -27,6 +28,14 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("WebKit"),
+            ]
+        ),
+        .executableTarget(
+            name: "NeoMDQuickLook",
+            dependencies: ["MDCore"],
+            linkerSettings: [
+                .linkedFramework("QuickLookUI"),
+                .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
             ]
         ),
         .testTarget(
