@@ -32,10 +32,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         super.init(window: window)
 
         tabControl.target = self
-        tabControl.selectedSegment = DocTab.render.rawValue
-        // Task 7 enables Raw and Split.
-        tabControl.setEnabled(false, forSegment: DocTab.raw.rawValue)
-        tabControl.setEnabled(false, forSegment: DocTab.split.rawValue)
 
         let toolbar = NSToolbar(identifier: "neo-md.document")
         toolbar.delegate = self
@@ -46,6 +42,10 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
 
         window.setFrameAutosaveName("neo-md.document")
         shouldCascadeWindows = true
+
+        // New windows start in the default tab.
+        contentController.select(Settings.shared.defaultTab)
+        tabControl.selectedSegment = contentController.currentTab.rawValue
     }
 
     @available(*, unavailable)
@@ -145,7 +145,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         switch menuItem.action {
         case #selector(selectTab(_:)):
             menuItem.state = menuItem.tag == contentController.currentTab.rawValue ? .on : .off
-            return menuItem.tag == DocTab.render.rawValue   // Task 7 enables Raw and Split.
+            return DocTab(rawValue: menuItem.tag) != nil
         case #selector(renderNow(_:)):
             return true
         case #selector(toggleOutline(_:)), #selector(showFind(_:)), #selector(showSettings(_:)):

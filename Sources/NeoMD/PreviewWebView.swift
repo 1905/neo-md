@@ -12,6 +12,11 @@ final class PreviewWebView: NSView {
         didSet { assetHandler.documentFolder = documentFolder }
     }
 
+    /// True for the Split tab preview: adds class `split` to `<body>` (narrower padding, full width).
+    var isSplit = false {
+        didSet { applyBodyClass() }
+    }
+
     private let webView: WKWebView
     private let assetHandler = AssetSchemeHandler()
     private var pageLoaded = false
@@ -92,6 +97,7 @@ final class PreviewWebView: NSView {
     private func pageDidLoad() {
         pageLoaded = true
         applyAccent()
+        applyBodyClass()
         if let html = pendingHTML {
             pendingHTML = nil
             update(html: html)
@@ -100,6 +106,11 @@ final class PreviewWebView: NSView {
             pendingLine = nil
             scrollToLine(line)
         }
+    }
+
+    private func applyBodyClass() {
+        guard pageLoaded else { return }
+        webView.evaluateJavaScript("document.body.classList.toggle(\"split\", \(isSplit))", completionHandler: nil)
     }
 
     @objc private func systemColorsChanged(_ note: Notification) {

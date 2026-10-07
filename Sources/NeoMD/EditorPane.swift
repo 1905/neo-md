@@ -64,6 +64,13 @@ final class EditorPane: NSView, NSTextViewDelegate {
         reloadFromDocument()
         NotificationCenter.default.addObserver(self, selector: #selector(documentTextDidChange),
                                                name: MarkdownDocument.textDidChange, object: document)
+        NotificationCenter.default.addObserver(self, selector: #selector(documentDidSave),
+                                               name: MarkdownDocument.didSave, object: document)
+    }
+
+    /// Typing after a save starts a new undo step, so one undo does not cross the save point.
+    @objc private func documentDidSave(_ note: Notification) {
+        textView.breakUndoCoalescing()
     }
 
     /// Replaces the editor text with `document.text`. Keeps the cursor if it still fits.

@@ -4,6 +4,8 @@ import AppKit
 final class MarkdownDocument: NSDocument {
     /// Posted (object: the document) after `text` changes: on read, on revert, and by the editor.
     static let textDidChange = Notification.Name("NeoMDMarkdownDocumentTextDidChange")
+    /// Posted (object: the document) after a successful save.
+    static let didSave = Notification.Name("NeoMDMarkdownDocumentDidSave")
 
     /// The source. The editor writes here.
     var text: String = ""
@@ -49,6 +51,9 @@ final class MarkdownDocument: NSDocument {
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
             if let self, error == nil, let saved = self.pendingSavedText {
                 self.lastSavedText = saved
+            }
+            if let self, error == nil {
+                NotificationCenter.default.post(name: MarkdownDocument.didSave, object: self)
             }
             self?.pendingSavedText = nil
             completionHandler(error)

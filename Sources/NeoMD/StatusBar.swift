@@ -64,6 +64,18 @@ final class StatusBar: NSView {
         return "\(lines) lines · \(size) · UTF-8"
     }
 
+    /// Raw and Split text: `Ln 23, Col 48 · UTF-8 · LF` (or `CRLF`).
+    static func editorInfo(line: Int, column: Int, lineEnding: String) -> String {
+        "Ln \(line), Col \(column) · UTF-8 · \(lineEnding == "\r\n" ? "CRLF" : "LF")"
+    }
+
+    /// 1-based column: grapheme clusters from `lineStart` to `location` (UTF-16 offsets), plus 1.
+    static func column(in text: NSString, lineStart: Int, location: Int) -> Int {
+        let start = min(max(0, lineStart), text.length)
+        let end = min(max(start, location), text.length)
+        return text.substring(with: NSRange(location: start, length: end - start)).count + 1
+    }
+
     /// Number of lines. A trailing newline does not start a new line. Empty text has 0 lines.
     static func lineCount(_ text: String) -> Int {
         var count = 0
