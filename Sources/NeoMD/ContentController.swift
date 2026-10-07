@@ -5,7 +5,7 @@ import MDCore
 /// Render = `outline` left (hideable) + `findBar` over `preview` right. Raw = `editor`. Split = `editor` left + `splitPreview` right.
 /// One `EditorPane` moves between Raw and Split, so the cursor and undo stack survive a tab switch.
 @MainActor
-final class ContentController: NSViewController, NSSplitViewDelegate {
+final class ContentController: NSViewController {
     /// Above this size (UTF-8 bytes) text changes do not re-render. ⌘R still renders once.
     static let livePreviewLimit = 5 * 1024 * 1024
     static let renderDebounce: TimeInterval = 0.150
@@ -47,21 +47,42 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
         return split
     }()
     private var splitNeedsInitialPosition = true
-    /// The Render tab: `outline` (fixed width, not draggable) | `previewColumn`.
-    private lazy var renderPane: NSSplitView = {
-        let split = NSSplitView()
-        split.isVertical = true
-        split.dividerStyle = .thin
-        split.delegate = self
-        outline.frame = NSRect(x: 0, y: 0, width: OutlineSidebar.width, height: 400)
-        split.addArrangedSubview(outline)
-        split.addArrangedSubview(previewColumn)
-        return split
+    /// The Render tab: `outline` (220 pt) | 1 pt line | `previewColumn`. Plain constraints, no split view:
+    /// hiding the outline hides it and the line and pins `previewColumn` to the left edge.
+    private let outlineDivider: NSBox = {
+        let line = NSBox()
+        line.boxType = .separator
+        return line
+    }()
+    private var previewAfterOutline: NSLayoutConstraint!
+    private var previewAtLeadingEdge: NSLayoutConstraint!
+    private lazy var renderPane: NSView = {
+        let pane = NSView()
+        for view in [outline, outlineDivider, previewColumn] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            pane.addSubview(view)
+        }
+        previewAfterOutline = previewColumn.leadingAnchor.constraint(equalTo: outlineDivider.trailingAnchor)
+        previewAtLeadingEdge = previewColumn.leadingAnchor.constraint(equalTo: pane.leadingAnchor)
+        NSLayoutConstraint.activate([
+            outline.leadingAnchor.constraint(equalTo: pane.leadingAnchor),
+            outline.topAnchor.constraint(equalTo: pane.topAnchor),
+            outline.bottomAnchor.constraint(equalTo: pane.bottomAnchor),
+            outline.widthAnchor.constraint(equalToConstant: OutlineSidebar.width),
+            outlineDivider.leadingAnchor.constraint(equalTo: outline.trailingAnchor),
+            outlineDivider.topAnchor.constraint(equalTo: pane.topAnchor),
+            outlineDivider.bottomAnchor.constraint(equalTo: pane.bottomAnchor),
+            outlineDivider.widthAnchor.constraint(equalToConstant: 1),
+            previewColumn.trailingAnchor.constraint(equalTo: pane.trailingAnchor),
+            previewColumn.topAnchor.constraint(equalTo: pane.topAnchor),
+            previewColumn.bottomAnchor.constraint(equalTo: pane.bottomAnchor),
+        ])
+        applyOutlineVisibility()
+        return pane
     }()
     /// `findBar` on top of `preview`. The bar slides in by animating its height from 0 to 32 pt.
     private lazy var previewColumn: NSView = {
-        let column = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
-        column.translatesAutoresizingMaskIntoConstraints = true
+        let column = NSView()
         for view in [findBar, preview] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             column.addSubview(view)
@@ -131,7 +152,6 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         isLarge = document.text.utf8.count > Self.livePreviewLimit
-        outline.isHidden = !Settings.shared.outlineVisible
         show(renderPane)
         outline.onSelect = { [weak self] item in self?.preview.scrollToLine(item.line) }
         preview.onVisibleLine = { [weak self] line in self?.outline.highlight(line: line) }
@@ -158,41 +178,24 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
     override func viewDidLayout() {
         super.viewDidLayout()
         positionSplitIfNeeded()
-        positionOutlineIfNeeded()
     }
 
     // MARK: - Outline
 
     @objc private func settingsDidChange(_ note: Notification) {
-        let hidden = !Settings.shared.outlineVisible
-        guard outline.isHidden != hidden else { return }
-        outline.isHidden = hidden
-        renderPane.adjustSubviews()
-        positionOutlineIfNeeded()
+        applyOutlineVisibility()
     }
 
-    /// Puts the divider at 220 pt when the outline is shown and the Render pane has a real width.
-    private func positionOutlineIfNeeded() {
-        guard currentTab == .render, !outline.isHidden else { return }
-        contentContainer.layoutSubtreeIfNeeded()
-        let width = renderPane.bounds.width
-        guard width > OutlineSidebar.width, outline.frame.width != OutlineSidebar.width else { return }
-        renderPane.setPosition(OutlineSidebar.width, ofDividerAt: 0)
-    }
-
-    func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
-        // Window resizes change the preview width only.
-        splitView !== renderPane || view !== outline
-    }
-
-    func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect,
-                   forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
-        // The outline has a fixed width: no drag area on its divider.
-        splitView === renderPane ? .zero : proposedEffectiveRect
-    }
-
-    func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
-        splitView === renderPane && outline.isHidden
+    /// Shows or hides the outline and its line. Hidden: `previewColumn` takes the full width.
+    private func applyOutlineVisibility() {
+        let visible = Settings.shared.outlineVisible
+        let leading: NSLayoutConstraint = visible ? previewAfterOutline : previewAtLeadingEdge
+        guard !leading.isActive else { return }
+        outline.isHidden = !visible
+        outlineDivider.isHidden = !visible
+        // Deactivate the other one first, so the two leading constraints are never active together.
+        (visible ? previewAtLeadingEdge : previewAfterOutline).isActive = false
+        leading.isActive = true
     }
 
     // MARK: - Tabs
@@ -202,7 +205,6 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
         switch tab {
         case .render:
             show(renderPane)
-            positionOutlineIfNeeded()
         case .raw:
             show(editor)
         case .split:
@@ -518,7 +520,8 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
         } else {
             let textView = editor.textView
             let text = textView.string as NSString
-            let location = min(textView.selectedRange().location, text.length)
+            // Vim visual modes: the moving end (head), not the selection start.
+            let location = min(editor.vim.visualCursor ?? textView.selectedRange().location, text.length)
             let line = textView.lineNumber(at: location)
             let starts = textView.lineStarts
             let lineStart = line - 1 < starts.count ? starts[line - 1] : 0

@@ -109,7 +109,11 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         }
         let vim = contentController.editor.vim
         if vim.onModeChange == nil {
-            vim.onModeChange = { [weak self] _, _ in self?.updateModeSlot() }
+            vim.onModeChange = { [weak self] _, _ in
+                self?.updateModeSlot()
+                // Visual-line head moves can leave the selection unchanged; Ln/Col follows the head.
+                self?.contentController.updateStatus()
+            }
         }
         statusBar.showVim(mode: vim.mode, commandLine: vim.commandLine)
     }
