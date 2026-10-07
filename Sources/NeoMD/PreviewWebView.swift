@@ -78,12 +78,24 @@ final class PreviewWebView: NSView {
     }
 
     func find(_ string: String, backwards: Bool) {
+        find(string, backwards: backwards, completion: nil)
+    }
+
+    /// Selects the next (or previous) match, wrapping, case-insensitive. `completion(true)` = a match was found.
+    func find(_ string: String, backwards: Bool, completion: ((Bool) -> Void)?) {
         guard !string.isEmpty else { return }
         let config = WKFindConfiguration()
         config.backwards = backwards
         config.wraps = true
         config.caseSensitive = false
-        webView.find(string, configuration: config) { _ in }
+        webView.find(string, configuration: config) { result in
+            completion?(result.matchFound)
+        }
+    }
+
+    /// Gives keyboard focus to the page (after the find bar closes).
+    func focusPage() {
+        window?.makeFirstResponder(webView)
     }
 
     // MARK: - Page

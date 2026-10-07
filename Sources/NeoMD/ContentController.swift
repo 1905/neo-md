@@ -2,7 +2,7 @@ import AppKit
 import MDCore
 
 /// Owns the disk-change banner (top, hidden by default), the content area and the status bar (bottom).
-/// Render = `outline` left (hideable) + `preview` right. Raw = `editor`. Split = `editor` left + `splitPreview` right.
+/// Render = `outline` left (hideable) + `findBar` over `preview` right. Raw = `editor`. Split = `editor` left + `splitPreview` right.
 /// One `EditorPane` moves between Raw and Split, so the cursor and undo stack survive a tab switch.
 @MainActor
 final class ContentController: NSViewController, NSSplitViewDelegate {
@@ -20,6 +20,9 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
     let contentContainer = NSView()
     /// "Changed on disk." / "Deleted on disk." strip above the content (frame 12).
     let banner = DiskChangeBanner()
+    /// Render tab find bar. Height 0 (and hidden) until ⌘F.
+    let findBar = FindBar()
+    private var findBarHeight: NSLayoutConstraint!
     private var contentTopToRoot: NSLayoutConstraint!
     private var contentTopToBanner: NSLayoutConstraint!
     /// Editor scroll offset saved by `willRevert`, restored by `didRevert`.
@@ -44,17 +47,38 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
         return split
     }()
     private var splitNeedsInitialPosition = true
-    /// The Render tab: `outline` (fixed width, not draggable) | `preview`.
+    /// The Render tab: `outline` (fixed width, not draggable) | `previewColumn`.
     private lazy var renderPane: NSSplitView = {
         let split = NSSplitView()
         split.isVertical = true
         split.dividerStyle = .thin
         split.delegate = self
         outline.frame = NSRect(x: 0, y: 0, width: OutlineSidebar.width, height: 400)
-        preview.translatesAutoresizingMaskIntoConstraints = true
         split.addArrangedSubview(outline)
-        split.addArrangedSubview(preview)
+        split.addArrangedSubview(previewColumn)
         return split
+    }()
+    /// `findBar` on top of `preview`. The bar slides in by animating its height from 0 to 32 pt.
+    private lazy var previewColumn: NSView = {
+        let column = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
+        column.translatesAutoresizingMaskIntoConstraints = true
+        for view in [findBar, preview] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            column.addSubview(view)
+        }
+        findBar.isHidden = true
+        findBarHeight = findBar.heightAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([
+            findBar.leadingAnchor.constraint(equalTo: column.leadingAnchor),
+            findBar.trailingAnchor.constraint(equalTo: column.trailingAnchor),
+            findBar.topAnchor.constraint(equalTo: column.topAnchor),
+            findBarHeight,
+            preview.leadingAnchor.constraint(equalTo: column.leadingAnchor),
+            preview.trailingAnchor.constraint(equalTo: column.trailingAnchor),
+            preview.topAnchor.constraint(equalTo: findBar.bottomAnchor),
+            preview.bottomAnchor.constraint(equalTo: column.bottomAnchor),
+        ])
+        return column
     }()
 
     /// Bumped on every text change. A preview is current when its version matches.
@@ -80,7 +104,8 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override func loadView() {
-        let root = NSView()
+        let root = FindKeyView()
+        root.onFindAgain = { [weak self] backwards in self?.findAgain(backwards: backwards) ?? false }
         for view in [banner, contentContainer, statusBar] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
@@ -125,6 +150,8 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
                            name: MarkdownDocument.didSave, object: document)
         banner.onKeepMine = { [weak self] in self?.setBannerVisible(false) }
         banner.onReload = { [weak self] in self?.reloadFromDisk() }
+        findBar.onFind = { [weak self] string, backwards in self?.findInPreview(string, backwards: backwards) }
+        findBar.onClose = { [weak self] in self?.hideFindBar() }
         render()
     }
 
@@ -242,6 +269,77 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
         case .render: return preview
         case .raw: return nil
         case .split: return splitPreview
+        }
+    }
+
+    // MARK: - Find
+
+    /// ⌘F and the toolbar button. Render: slides in `findBar`. Raw / Split: the text view's standard find bar.
+    func showFind() {
+        if currentTab == .render {
+            showFindBar()
+        } else {
+            view.window?.makeFirstResponder(editor.textView)
+            editor.textView.performFindPanelAction(Self.findPanelItem(.showFindPanel))
+        }
+    }
+
+    private func showFindBar() {
+        if findBar.isHidden {
+            findBar.isHidden = false
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                context.allowsImplicitAnimation = true
+                findBarHeight.animator().constant = FindBar.height
+                previewColumn.layoutSubtreeIfNeeded()
+            }
+        }
+        view.window?.makeFirstResponder(findBar.searchField)
+        findBar.searchField.selectText(nil)
+    }
+
+    private func hideFindBar() {
+        guard !findBar.isHidden else { return }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.15
+            context.allowsImplicitAnimation = true
+            findBarHeight.animator().constant = 0
+            previewColumn.layoutSubtreeIfNeeded()
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.findBarHeight.constant == 0 else { return }
+                self.findBar.isHidden = true
+            }
+        })
+        preview.focusPage()
+    }
+
+    private func findInPreview(_ string: String, backwards: Bool) {
+        preview.find(string, backwards: backwards) { [weak self] found in
+            if !found { self?.findBar.showNoMatch() }
+        }
+    }
+
+    /// ⌘G / ⇧⌘G in Raw and Split (the main menu has no Find Next item). Render handles it in `FindBar`.
+    private func findAgain(backwards: Bool) -> Bool {
+        guard currentTab != .render, observingEditor else { return false }
+        editor.textView.performFindPanelAction(Self.findPanelItem(backwards ? .previous : .next))
+        return true
+    }
+
+    /// `performFindPanelAction(_:)` reads the action from the sender's `tag`.
+    private static func findPanelItem(_ action: NSFindPanelAction) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.tag = Int(action.rawValue)
+        return item
+    }
+
+    /// Escape with the focus in the page: the web view passes unused keys up the responder chain to here.
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53, currentTab == .render, !findBar.isHidden {
+            hideFindBar()
+        } else {
+            super.keyDown(with: event)
         }
     }
 
@@ -428,5 +526,18 @@ final class ContentController: NSViewController, NSSplitViewDelegate {
             info = StatusBar.editorInfo(line: line, column: column, lineEnding: document.lineEnding)
         }
         statusBar.info = isLarge ? "Preview paused · \(info)" : info
+    }
+}
+
+/// Root view of `ContentController`. Catches ⌘G / ⇧⌘G before the main menu sees them.
+@MainActor
+private final class FindKeyView: NSView {
+    /// Returns true when the key was used.
+    var onFindAgain: ((Bool) -> Bool)?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if super.performKeyEquivalent(with: event) { return true }
+        guard FindBar.isFindAgain(event) else { return false }
+        return onFindAgain?(event.modifierFlags.contains(.shift)) ?? false
     }
 }

@@ -158,7 +158,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
             item.target = self
             item.isBordered = true
             item.autovalidates = false
-            item.isEnabled = false   // Task 12 wires find.
+            item.isEnabled = true
             findItem = item
         default:
             return nil
@@ -196,8 +196,10 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         contentController.render()
     }
 
-    /// ⌘F and the magnifier button. Stub: Task 12.
-    @objc func showFind(_ sender: Any?) {}
+    /// ⌘F and the magnifier button. Render: the web find bar. Raw / Split: the text view's find bar.
+    @objc func showFind(_ sender: Any?) {
+        contentController.showFind()
+    }
 
     /// ⌘, opens the settings popover under the `VIM` chip. A second ⌘, closes it.
     @objc func showSettings(_ sender: Any?) {
@@ -219,13 +221,11 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         case #selector(selectTab(_:)):
             menuItem.state = menuItem.tag == contentController.currentTab.rawValue ? .on : .off
             return DocTab(rawValue: menuItem.tag) != nil
-        case #selector(renderNow(_:)), #selector(showSettings(_:)):
+        case #selector(renderNow(_:)), #selector(showSettings(_:)), #selector(showFind(_:)):
             return true
         case #selector(toggleOutline(_:)):
             menuItem.title = Settings.shared.outlineVisible ? "Hide Outline" : "Show Outline"
             return contentController.currentTab == .render
-        case #selector(showFind(_:)):
-            return false   // Not wired yet (Task 12).
         default:
             return true
         }
