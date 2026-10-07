@@ -127,6 +127,9 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
         typingAttributes = Self.baseAttributes
         textContainerInset = NSSize(width: 0, height: EditorStyle.topInset)
 
+        standardInsertionPointColor = insertionPointColor
+        standardSelectedTextAttributes = selectedTextAttributes
+
         textStorage?.delegate = self
         (layoutManager as? HighlightLayoutManager)?.onProcessEditing = { [weak self] in
             self?.applyPendingColors()
@@ -294,6 +297,133 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
         rect.size.width = bounds.width
         rect.origin.y += textContainerOrigin.y
         return rect
+    }
+
+    // MARK: - Vim
+
+    /// Set by `EditorPane`. Weak: the pane owns both objects.
+    weak var vimController: VimController?
+    /// Caret colour and selection look of the standard (non-Vim) editor, restored when Vim leaves block mode.
+    private var standardInsertionPointColor = NSColor.textColor
+    private var standardSelectedTextAttributes: [NSAttributedString.Key: Any] = [:]
+
+    private var showsBlockCursor: Bool { vimController?.showsBlockCursor ?? false }
+
+    override func keyDown(with event: NSEvent) {
+        // ⌘ shortcuts and marked (IME) text always take the standard path.
+        if !event.modifierFlags.contains(.command), !hasMarkedText(),
+           let vimController, vimController.handle(event) {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    /// Called by `VimController` after a mode or command-line change.
+    func vimStateDidChange() {
+        insertionPointColor = showsBlockCursor ? .clear : standardInsertionPointColor
+        let mode = vimController?.mode
+        if vimController?.isEnabled == true, mode == .visual || mode == .visualLine {
+            selectedTextAttributes = [.backgroundColor: VimStyle.visual.withAlphaComponent(0.3)]
+        } else {
+            selectedTextAttributes = standardSelectedTextAttributes
+        }
+        updateInsertionPointStateAndRestartTimer(true)
+        setNeedsDisplay(visibleRect)
+    }
+
+    /// Block mode draws its own cursor in `draw(_:)`; the thin caret stays hidden.
+    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
+        guard !showsBlockCursor else { return }
+        super.drawInsertionPoint(in: rect, color: color, turnedOn: flag)
+    }
+
+    /// Standard block-cursor recipe: grow every invalidated rect by one cell so the wide cursor redraws.
+    override func setNeedsDisplay(_ invalidRect: NSRect, avoidAdditionalLayout flag: Bool) {
+        var rect = invalidRect
+        if showsBlockCursor { rect.size.width += Self.spaceWidth }
+        super.setNeedsDisplay(rect, avoidAdditionalLayout: flag)
+    }
+
+    private static let spaceWidth = (" " as NSString).size(withAttributes: [.font: EditorStyle.font]).width
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let vimController, vimController.showsBlockCursor else { return }
+        let location = vimController.visualCursor ?? selectedRange().location
+        guard let cursor = blockCursor(at: location) else { return }
+        let (rect, grapheme, font) = cursor
+        guard rect.intersects(dirtyRect) else { return }
+        let color = vimController.visualCursor != nil ? VimStyle.visual : VimStyle.normal
+        guard window?.firstResponder === self else {
+            // Not focused: an outline, as in Terminal.
+            color.setStroke()
+            NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5)).stroke()
+            return
+        }
+        color.setFill()
+        rect.fill()
+        if let grapheme {
+            NSAttributedString(string: grapheme, attributes: [.font: font, .foregroundColor: NSColor.textBackgroundColor])
+                .draw(at: rect.origin)
+        }
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted, showsBlockCursor { setNeedsDisplay(visibleRect) }
+        return accepted
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let accepted = super.resignFirstResponder()
+        if accepted, showsBlockCursor { setNeedsDisplay(visibleRect) }
+        return accepted
+    }
+
+    /// Block cursor rect (view coordinates) at a UTF-16 offset, one grapheme wide, or one
+    /// space wide at a line end. Also the grapheme to draw on top (nil at a line end) and its font.
+    private func blockCursor(at index: Int) -> (NSRect, String?, NSFont)? {
+        guard let layoutManager, let textContainer, let storage = textStorage else { return nil }
+        let text = storage.string as NSString
+        let location = min(max(0, index), text.length)
+        let metrics = EditorStyle.font
+        var grapheme: String?
+        var font = metrics
+        let x: CGFloat, baseline: CGFloat
+        var width = Self.spaceWidth
+
+        if location < text.length {
+            let glyph = layoutManager.glyphIndexForCharacter(at: location)
+            let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let point = layoutManager.location(forGlyphAt: glyph)
+            x = fragment.minX + point.x
+            baseline = fragment.minY + point.y
+            let char = text.character(at: location)
+            if char != 0x0A, char != 0x0D {
+                let range = text.rangeOfComposedCharacterSequence(at: location)
+                let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+                let bounds = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+                if bounds.width > 0 { width = bounds.width }
+                grapheme = text.substring(with: range)
+                font = storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont ?? metrics
+            }
+        } else if text.length == 0 || text.character(at: text.length - 1) == 0x0A {
+            layoutManager.ensureLayout(for: textContainer)
+            let fragment = layoutManager.extraLineFragmentRect
+            guard fragment.height > 0 else { return nil }
+            x = fragment.minX
+            baseline = fragment.maxY + metrics.descender
+        } else {
+            let glyph = layoutManager.glyphIndexForCharacter(at: text.length - 1)
+            let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let last = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer)
+            x = last.maxX
+            baseline = fragment.minY + layoutManager.location(forGlyphAt: glyph).y
+        }
+        let origin = textContainerOrigin
+        let rect = NSRect(x: origin.x + x, y: origin.y + baseline - metrics.ascender,
+                          width: width, height: metrics.ascender - metrics.descender)
+        return (rect, grapheme, font)
     }
 
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {

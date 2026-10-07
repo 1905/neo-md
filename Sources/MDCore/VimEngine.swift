@@ -23,7 +23,9 @@ public final class VimEngine {
     private var columnAnchor: Int?
     /// Visual mode: the fixed end and the moving end of the selection (grapheme starts).
     private var visualAnchor = 0
-    private var visualCursor = 0
+    private var visualHead = 0
+    /// The moving end of the visual selection (where the block cursor goes); nil outside visual modes.
+    public var visualCursor: Int? { mode == .visual || mode == .visualLine ? visualHead : nil }
     /// Last `/` pattern, for `n`, `N` and an empty `/`.
     private var lastSearch: String?
 
@@ -150,7 +152,7 @@ public final class VimEngine {
         case "v", "V":
             clearPending()
             visualAnchor = cursor
-            visualCursor = cursor
+            visualHead = cursor
             columnAnchor = nil
             return enterVisual(key.chars == "v" ? .visual : .visualLine, text: text)
         case ":", "/":
@@ -289,7 +291,7 @@ public final class VimEngine {
 
     private func handleVisual(_ key: VimKey, text: NSString) -> [VimAction] {
         visualAnchor = TextNav.normalCursor(min(visualAnchor, text.length), in: text)
-        visualCursor = TextNav.normalCursor(min(visualCursor, text.length), in: text)
+        visualHead = TextNav.normalCursor(min(visualHead, text.length), in: text)
         if Self.isEscape(key) { return exitVisual() }
         if key.control { return beep() }
         switch motionKey(key) {
@@ -298,11 +300,11 @@ public final class VimEngine {
         case .motion(let motion):
             let count = pendingCount
             clearPending()
-            let column = columnAnchor == visualCursor ? preferredColumn : nil
-            let target = motion.target(from: visualCursor, count: count, in: text, preferredColumn: column)
-            visualCursor = TextNav.normalCursor(target.position, in: text)
+            let column = columnAnchor == visualHead ? preferredColumn : nil
+            let target = motion.target(from: visualHead, count: count, in: text, preferredColumn: column)
+            visualHead = TextNav.normalCursor(target.position, in: text)
             preferredColumn = target.column
-            columnAnchor = visualCursor
+            columnAnchor = visualHead
             return [.setSelection(visualRange(text))]
         case .other: break
         }
@@ -313,7 +315,7 @@ public final class VimEngine {
             return next == mode ? exitVisual() : enterVisual(next, text: text)
         case "d", "x", "c", "y":
             let op: VimOperator = key.chars == "c" ? .change : key.chars == "y" ? .yank : .delete
-            let lo = min(visualAnchor, visualCursor), hi = max(visualAnchor, visualCursor)
+            let lo = min(visualAnchor, visualHead), hi = max(visualAnchor, visualHead)
             if mode == .visualLine {
                 return applyLinewise(op, first: TextNav.line(at: lo, in: text),
                                      last: TextNav.line(at: hi, in: text), text: text, yankCursor: lo)
@@ -331,13 +333,13 @@ public final class VimEngine {
 
     private func exitVisual() -> [VimAction] {
         clearPending()
-        return finish(.normal) + [.setSelection(NSRange(location: visualCursor, length: 0))]
+        return finish(.normal) + [.setSelection(NSRange(location: visualHead, length: 0))]
     }
 
     /// The selection to show: characters from anchor to cursor, both included,
     /// or whole lines in visual-line mode. On an empty line it covers the newline.
     private func visualRange(_ text: NSString) -> NSRange {
-        let lo = min(visualAnchor, visualCursor), hi = max(visualAnchor, visualCursor)
+        let lo = min(visualAnchor, visualHead), hi = max(visualAnchor, visualHead)
         if mode == .visualLine {
             let first = TextNav.line(at: lo, in: text), last = TextNav.line(at: hi, in: text)
             return NSRange(location: first.start, length: last.end - first.start)

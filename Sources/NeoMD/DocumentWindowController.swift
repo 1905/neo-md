@@ -17,6 +17,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
     let vimChip = ChipButton(title: "VIM")
     private(set) var outlineItem: NSToolbarItem?
     private(set) var findItem: NSToolbarItem?
+    private lazy var settingsPopover = SettingsPopover()
 
     init(document: MarkdownDocument) {
         contentController = ContentController(document: document)
@@ -46,6 +47,13 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         // New windows start in the default tab.
         contentController.select(Settings.shared.defaultTab)
         tabControl.selectedSegment = contentController.currentTab.rawValue
+
+        vimChip.target = self
+        vimChip.action = #selector(toggleVim(_:))
+        updateVimChip()
+        updateModeSlot()
+        NotificationCenter.default.addObserver(self, selector: #selector(settingsDidChange),
+                                               name: Settings.didChange, object: nil)
     }
 
     @available(*, unavailable)
@@ -55,11 +63,60 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
 
     override func synchronizeWindowTitleWithDocumentName() {
         super.synchronizeWindowTitleWithDocumentName()
-        guard let folder = document?.fileURL?.deletingLastPathComponent() else {
-            window?.subtitle = ""
+        updateSubtitle(edited: (document as? NSDocument)?.isDocumentEdited ?? false)
+    }
+
+    /// NSDocument calls this on its window controllers whenever its edited state changes
+    /// (edits, undo back to the saved state, save, revert).
+    override func setDocumentEdited(_ dirtyFlag: Bool) {
+        super.setDocumentEdited(dirtyFlag)
+        updateSubtitle(edited: dirtyFlag)
+    }
+
+    /// Subtitle = folder path, prefixed with "Edited · " while there are unsaved changes.
+    /// With a subtitle, the macOS title bar shows only the close-button dot for unsaved changes.
+    private func updateSubtitle(edited: Bool) {
+        var parts: [String] = []
+        if edited { parts.append("Edited") }
+        if let folder = (document as? NSDocument)?.fileURL?.deletingLastPathComponent() {
+            parts.append((folder.path as NSString).abbreviatingWithTildeInPath)
+        }
+        window?.subtitle = parts.joined(separator: " · ")
+    }
+
+    // MARK: - Vim
+
+    @objc private func settingsDidChange(_ note: Notification) {
+        updateVimChip()
+        updateModeSlot()
+    }
+
+    /// Dim when off; green text and border when on (`.chip` / `.chip.on` in the mockup).
+    private func updateVimChip() {
+        let on = Settings.shared.keyBindings == .vim
+        vimChip.contentTintColor = on ? VimStyle.normal : .tertiaryLabelColor
+        vimChip.borderColor = on ? VimStyle.normal.withAlphaComponent(0.45) : .separatorColor
+        vimChip.toolTip = on ? "Vim key bindings: on" : "Vim key bindings: off"
+    }
+
+    /// Status bar badge: shown in Raw and Split while Vim is on. The editor is only touched
+    /// outside the Render tab, so a Render-only window never builds it.
+    private func updateModeSlot() {
+        let statusBar = contentController.statusBar
+        guard contentController.currentTab != .render, Settings.shared.keyBindings == .vim else {
+            statusBar.showVim(mode: nil, commandLine: nil)
             return
         }
-        window?.subtitle = (folder.path as NSString).abbreviatingWithTildeInPath
+        let vim = contentController.editor.vim
+        if vim.onModeChange == nil {
+            vim.onModeChange = { [weak self] _, _ in self?.updateModeSlot() }
+        }
+        statusBar.showVim(mode: vim.mode, commandLine: vim.commandLine)
+    }
+
+    /// The `VIM` chip: toggles Vim mode for the whole app.
+    @objc func toggleVim(_ sender: Any?) {
+        Settings.shared.keyBindings = Settings.shared.keyBindings == .vim ? .standard : .vim
     }
 
     // MARK: - Toolbar
@@ -92,7 +149,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         case ItemID.vim:
             item.label = "Vim"
             item.toolTip = "Vim key bindings"
-            vimChip.isEnabled = false   // Task 10 wires the chip.
             item.view = vimChip
         case ItemID.find:
             item.label = "Find"
@@ -125,6 +181,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         guard let tab = DocTab(rawValue: raw) else { return }
         contentController.select(tab)
         tabControl.selectedSegment = contentController.currentTab.rawValue
+        updateModeSlot()
     }
 
     /// ⇧⌘O and the `sidebar.left` button. Stub: Task 11.
@@ -138,25 +195,37 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
     /// ⌘F and the magnifier button. Stub: Task 12.
     @objc func showFind(_ sender: Any?) {}
 
-    /// ⌘, opens the settings popover under the `VIM` chip. Stub: Task 10.
-    @objc func showSettings(_ sender: Any?) {}
+    /// ⌘, opens the settings popover under the `VIM` chip. A second ⌘, closes it.
+    @objc func showSettings(_ sender: Any?) {
+        if settingsPopover.isShown {
+            settingsPopover.performClose(sender)
+            return
+        }
+        if vimChip.window != nil, !vimChip.isHiddenOrHasHiddenAncestor {
+            settingsPopover.show(relativeTo: vimChip.bounds, of: vimChip, preferredEdge: .minY)
+        } else if let content = window?.contentView {
+            // Toolbar hidden: anchor at the top right of the content.
+            let anchor = NSRect(x: content.bounds.maxX - 40, y: content.bounds.maxY - 1, width: 1, height: 1)
+            settingsPopover.show(relativeTo: anchor, of: content, preferredEdge: .minY)
+        }
+    }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(selectTab(_:)):
             menuItem.state = menuItem.tag == contentController.currentTab.rawValue ? .on : .off
             return DocTab(rawValue: menuItem.tag) != nil
-        case #selector(renderNow(_:)):
+        case #selector(renderNow(_:)), #selector(showSettings(_:)):
             return true
-        case #selector(toggleOutline(_:)), #selector(showFind(_:)), #selector(showSettings(_:)):
-            return false   // Not wired yet (Tasks 10–12).
+        case #selector(toggleOutline(_:)), #selector(showFind(_:)):
+            return false   // Not wired yet (Tasks 11–12).
         default:
             return true
         }
     }
 }
 
-/// Toolbar chip: small bordered text button (`VIM`). Task 10 adds the on/off colours.
+/// Toolbar chip: small bordered text button (`VIM`). The owner sets the on/off colours.
 @MainActor
 final class ChipButton: NSButton {
     var borderColor: NSColor = .separatorColor { didSet { updateBorder() } }

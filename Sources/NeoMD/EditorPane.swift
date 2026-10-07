@@ -12,6 +12,8 @@ final class EditorPane: NSView, NSTextViewDelegate {
     let scrollView: NSScrollView
     let textView: MarkdownTextView
     let ruler: LineNumberRuler
+    /// Vim key mode for `textView`. It follows `Settings.keyBindings` by itself.
+    let vim: VimController
     /// Called after every user edit, after the document notification.
     var onTextChange: (() -> Void)?
 
@@ -25,6 +27,7 @@ final class EditorPane: NSView, NSTextViewDelegate {
         self.textView = textView
         self.scrollView = scrollView
         ruler = LineNumberRuler(textView: textView, scrollView: scrollView)
+        vim = VimController(textView: textView, document: document)
         super.init(frame: .zero)
         setUp()
     }
@@ -55,6 +58,8 @@ final class EditorPane: NSView, NSTextViewDelegate {
         textView.autoresizingMask = [.width]
         textView.frame = NSRect(origin: .zero, size: scrollView.contentSize)
         textView.delegate = self
+        textView.vimController = vim
+        textView.vimStateDidChange()
         scrollView.documentView = textView
 
         scrollView.verticalRulerView = ruler
