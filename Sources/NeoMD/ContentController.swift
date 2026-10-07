@@ -2,11 +2,10 @@ import AppKit
 import MDCore
 
 /// Owns the disk-change banner (top, hidden by default), the content area and the status bar (bottom).
-/// Render = `preview`. Raw = `editor`. Split = `editor` left + `splitPreview` right.
+/// Render = `outline` left (hideable) + `preview` right. Raw = `editor`. Split = `editor` left + `splitPreview` right.
 /// One `EditorPane` moves between Raw and Split, so the cursor and undo stack survive a tab switch.
-/// Task 11 adds the outline to the Render tab.
 @MainActor
-final class ContentController: NSViewController {
+final class ContentController: NSViewController, NSSplitViewDelegate {
     /// Above this size (UTF-8 bytes) text changes do not re-render. ⌘R still renders once.
     static let livePreviewLimit = 5 * 1024 * 1024
     static let renderDebounce: TimeInterval = 0.150
@@ -14,6 +13,8 @@ final class ContentController: NSViewController {
 
     let document: MarkdownDocument
     let preview = PreviewWebView()
+    /// Headings of `lastResult`, Render tab only. Shown while `Settings.shared.outlineVisible`.
+    let outline = OutlineSidebar()
     let statusBar = StatusBar()
     /// Holds the view of the current tab.
     let contentContainer = NSView()
@@ -25,8 +26,10 @@ final class ContentController: NSViewController {
     private var savedEditorOrigin: NSPoint?
 
     private(set) var currentTab: DocTab = .render
-    /// The last successful render. Task 11 reads `outline` from it.
-    private(set) var lastResult: RenderResult?
+    /// The last successful render. Its `outline` feeds `outline.items`.
+    private(set) var lastResult: RenderResult? {
+        didSet { outline.items = lastResult?.outline ?? [] }
+    }
 
     private(set) lazy var editor = EditorPane(document: document)
     private lazy var splitPreview: PreviewWebView = {
@@ -41,6 +44,18 @@ final class ContentController: NSViewController {
         return split
     }()
     private var splitNeedsInitialPosition = true
+    /// The Render tab: `outline` (fixed width, not draggable) | `preview`.
+    private lazy var renderPane: NSSplitView = {
+        let split = NSSplitView()
+        split.isVertical = true
+        split.dividerStyle = .thin
+        split.delegate = self
+        outline.frame = NSRect(x: 0, y: 0, width: OutlineSidebar.width, height: 400)
+        preview.translatesAutoresizingMaskIntoConstraints = true
+        split.addArrangedSubview(outline)
+        split.addArrangedSubview(preview)
+        return split
+    }()
 
     /// Bumped on every text change. A preview is current when its version matches.
     private var textVersion = 0
@@ -91,8 +106,13 @@ final class ContentController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         isLarge = document.text.utf8.count > Self.livePreviewLimit
-        show(preview)
+        outline.isHidden = !Settings.shared.outlineVisible
+        show(renderPane)
+        outline.onSelect = { [weak self] item in self?.preview.scrollToLine(item.line) }
+        preview.onVisibleLine = { [weak self] line in self?.outline.highlight(line: line) }
         let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(settingsDidChange),
+                           name: Settings.didChange, object: nil)
         center.addObserver(self, selector: #selector(textDidChange),
                            name: MarkdownDocument.textDidChange, object: document)
         center.addObserver(self, selector: #selector(diskDidChange),
@@ -111,6 +131,41 @@ final class ContentController: NSViewController {
     override func viewDidLayout() {
         super.viewDidLayout()
         positionSplitIfNeeded()
+        positionOutlineIfNeeded()
+    }
+
+    // MARK: - Outline
+
+    @objc private func settingsDidChange(_ note: Notification) {
+        let hidden = !Settings.shared.outlineVisible
+        guard outline.isHidden != hidden else { return }
+        outline.isHidden = hidden
+        renderPane.adjustSubviews()
+        positionOutlineIfNeeded()
+    }
+
+    /// Puts the divider at 220 pt when the outline is shown and the Render pane has a real width.
+    private func positionOutlineIfNeeded() {
+        guard currentTab == .render, !outline.isHidden else { return }
+        contentContainer.layoutSubtreeIfNeeded()
+        let width = renderPane.bounds.width
+        guard width > OutlineSidebar.width, outline.frame.width != OutlineSidebar.width else { return }
+        renderPane.setPosition(OutlineSidebar.width, ofDividerAt: 0)
+    }
+
+    func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
+        // Window resizes change the preview width only.
+        splitView !== renderPane || view !== outline
+    }
+
+    func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect,
+                   forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
+        // The outline has a fixed width: no drag area on its divider.
+        splitView === renderPane ? .zero : proposedEffectiveRect
+    }
+
+    func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
+        splitView === renderPane && outline.isHidden
     }
 
     // MARK: - Tabs
@@ -119,7 +174,8 @@ final class ContentController: NSViewController {
         currentTab = tab
         switch tab {
         case .render:
-            show(preview)
+            show(renderPane)
+            positionOutlineIfNeeded()
         case .raw:
             show(editor)
         case .split:

@@ -141,7 +141,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
             item.target = self
             item.isBordered = true
             item.autovalidates = false
-            item.isEnabled = false   // Task 11 wires the outline.
+            item.isEnabled = contentController.currentTab == .render
             outlineItem = item
         case ItemID.tabs:
             item.label = "View"
@@ -181,11 +181,15 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         guard let tab = DocTab(rawValue: raw) else { return }
         contentController.select(tab)
         tabControl.selectedSegment = contentController.currentTab.rawValue
+        outlineItem?.isEnabled = contentController.currentTab == .render
         updateModeSlot()
     }
 
-    /// ⇧⌘O and the `sidebar.left` button. Stub: Task 11.
-    @objc func toggleOutline(_ sender: Any?) {}
+    /// ⇧⌘O and the `sidebar.left` button. Flips the app-wide setting; every window follows `Settings.didChange`.
+    @objc func toggleOutline(_ sender: Any?) {
+        guard contentController.currentTab == .render else { return }
+        Settings.shared.outlineVisible.toggle()
+    }
 
     /// ⌘R: render the current text now.
     @objc func renderNow(_ sender: Any?) {
@@ -217,8 +221,11 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
             return DocTab(rawValue: menuItem.tag) != nil
         case #selector(renderNow(_:)), #selector(showSettings(_:)):
             return true
-        case #selector(toggleOutline(_:)), #selector(showFind(_:)):
-            return false   // Not wired yet (Tasks 11–12).
+        case #selector(toggleOutline(_:)):
+            menuItem.title = Settings.shared.outlineVisible ? "Hide Outline" : "Show Outline"
+            return contentController.currentTab == .render
+        case #selector(showFind(_:)):
+            return false   // Not wired yet (Task 12).
         default:
             return true
         }
