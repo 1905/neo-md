@@ -15,7 +15,9 @@ case "$action" in
     # Command Line Tools (no Xcode) ship Testing.framework outside the default
     # search paths, so pass them to the compiler, the linker and the rpath.
     fw="/Library/Developer/CommandLineTools/Library/Developer/Frameworks"
-    remote_cmd="swift test -Xswiftc -F -Xswiftc $fw -Xlinker -F -Xlinker $fw -Xlinker -rpath -Xlinker $fw"
+    # CLT also ships the _Testing_Foundation overlay binary without its
+    # swiftmodule, so disable cross-import overlays or Foundation + Testing fails.
+    remote_cmd="swift test -Xswiftc -F -Xswiftc $fw -Xlinker -F -Xlinker $fw -Xlinker -rpath -Xlinker $fw -Xswiftc -Xfrontend -Xswiftc -disable-cross-import-overlays"
     ;;
   bundle)  remote_cmd="scripts/bundle.sh" ;;
   dmg)     remote_cmd="scripts/dmg.sh" ;;
