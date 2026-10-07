@@ -1,0 +1,8 @@
+.build/
+build/
+*.dmg
+.DS_Store
+.claude/
+.playwright-cli/
+test-doc.md
+plans/
