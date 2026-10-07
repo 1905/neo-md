@@ -70,7 +70,7 @@ final class HighlightLayoutManager: NSLayoutManager {
 /// Colouring: token colours are temporary attributes on the layout manager, so
 /// they never enter undo. Bold weight (headings, `**bold**`) needs a font change,
 /// which temporary attributes do not support; it is set on the text storage
-/// while it processes an edit. That does not register undo either.
+/// right after each edit, as its own attribute-only edit. That does not register undo either.
 ///
 /// Create it with `MarkdownTextView.make()`. `keyDown(with:)` and
 /// `drawInsertionPoint(in:color:turnedOn:)` stay overridable for the Vim mode.
@@ -82,6 +82,8 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
     /// closed a fenced block, so the colouring runs to the end of the text.
     private var fenceFingerprint = 0
     private var pendingColors: (range: NSRange, spans: [HighlightSpan])?
+    /// Lines whose fonts must be set after the current edit; see `applyPendingFonts()`.
+    private var pendingFontRange: NSRange?
 
     /// Builds a TextKit 1 stack with a `HighlightLayoutManager` and a text view on it.
     static func make() -> MarkdownTextView {
@@ -209,14 +211,44 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
             lines = NSRange(location: lines.location, length: text.length - lines.location)
         }
         let spans = MarkdownHighlighter.spans(in: text, lineRange: lines)
-
-        // Attribute changes are allowed here (not character changes). They come before
-        // attribute fixing, so font substitution still covers the bold font.
-        textStorage.addAttributes(Self.baseAttributes, range: lines)
-        for span in spans where span.token == .heading || span.token == .bold {
-            textStorage.addAttribute(.font, value: EditorStyle.boldFont, range: span.range)
-        }
         pendingColors = (lines, spans)
+
+        // No storage attribute changes here: they grow `editedRange` past the typed
+        // text, and NSTextView then puts the cursor at the end of the grown range
+        // (the start of the next line). The font pass runs after the edit instead.
+        if let pending = pendingFontRange {
+            // A second edit before the pass ran: older offsets may have shifted.
+            let location = min(pending.location, lines.location)
+            pendingFontRange = NSRange(location: location, length: text.length - location)
+        } else {
+            pendingFontRange = lines
+            // `didChangeText()` runs the pass for typing; this covers `string` and other
+            // edits that do not go through it.
+            DispatchQueue.main.async { [weak self] in self?.applyPendingFonts() }
+        }
+    }
+
+    override func didChangeText() {
+        applyPendingFonts()
+        super.didChangeText()
+    }
+
+    /// Base attributes and the bold font on the lines of the last edits, as a
+    /// separate attribute-only edit. It does not register undo and does not move the cursor.
+    private func applyPendingFonts() {
+        guard let pending = pendingFontRange, let storage = textStorage else { return }
+        pendingFontRange = nil
+        let text = storage.string as NSString
+        let location = min(pending.location, text.length)
+        let lines = text.lineRange(for: NSRange(location: location,
+                                                length: min(NSMaxRange(pending), text.length) - location))
+        let spans = MarkdownHighlighter.spans(in: text, lineRange: lines)
+        storage.beginEditing()
+        storage.addAttributes(Self.baseAttributes, range: lines)
+        for span in spans where span.token == .heading || span.token == .bold {
+            storage.addAttribute(.font, value: EditorStyle.boldFont, range: span.range)
+        }
+        storage.endEditing()
     }
 
     private func applyPendingColors() {
