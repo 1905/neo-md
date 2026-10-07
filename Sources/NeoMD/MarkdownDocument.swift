@@ -6,6 +6,13 @@ final class MarkdownDocument: NSDocument {
     static let textDidChange = Notification.Name("NeoMDMarkdownDocumentTextDidChange")
     /// Posted (object: the document) after a successful save.
     static let didSave = Notification.Name("NeoMDMarkdownDocumentDidSave")
+    /// Posted (object: the document) when the file changed or was deleted on disk and the window
+    /// must show the banner. userInfo `deletedKey`: Bool.
+    static let diskDidChange = Notification.Name("NeoMDMarkdownDocumentDiskDidChange")
+    static let deletedKey = "deleted"
+    /// Posted (object: the document) right before and right after a revert, so views can keep their scroll position.
+    static let willRevert = Notification.Name("NeoMDMarkdownDocumentWillRevert")
+    static let didRevert = Notification.Name("NeoMDMarkdownDocumentDidRevert")
 
     /// The source. The editor writes here.
     var text: String = ""
@@ -22,6 +29,8 @@ final class MarkdownDocument: NSDocument {
     }
 
     override func makeWindowControllers() {
+        // One window per document. A second call (for example from state restoration) adds nothing.
+        guard windowControllers.isEmpty else { return }
         addWindowController(DocumentWindowController(document: self))
     }
 
@@ -41,7 +50,12 @@ final class MarkdownDocument: NSDocument {
 
     override func data(ofType typeName: String) throws -> Data {
         pendingSavedText = text
-        let utf8 = Data(text.utf8)
+        return encoded(text)
+    }
+
+    /// The bytes a save writes for `string` with the current line ending.
+    private func encoded(_ string: String) -> Data {
+        let utf8 = Data(string.utf8)
         return lineEnding == "\r\n" ? Self.convertingLoneLFToCRLF(utf8) : utf8
     }
 
@@ -58,6 +72,66 @@ final class MarkdownDocument: NSDocument {
             self?.pendingSavedText = nil
             completionHandler(error)
         }
+    }
+
+    override func revert(toContentsOf url: URL, ofType typeName: String) throws {
+        NotificationCenter.default.post(name: Self.willRevert, object: self)
+        defer { NotificationCenter.default.post(name: Self.didRevert, object: self) }
+        try super.revert(toContentsOf: url, ofType: typeName)
+        // The disk now holds `text`; the old save no longer describes it.
+        lastSavedText = nil
+    }
+
+    // MARK: - Disk changes (NSFilePresenter)
+
+    // NSDocument calls these on its presenter queue. The work runs on the main queue.
+    // `presentedItemDidMove(to:)` keeps the NSDocument default: it updates `fileURL`.
+
+    override func presentedItemDidChange() {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.handleDiskChange() }
+        }
+    }
+
+    /// The window stays open and shows the "Deleted on disk." banner.
+    override func accommodatePresentedItemDeletion(completionHandler: @escaping (Error?) -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.postDiskChange(deleted: true) }
+        }
+        completionHandler(nil)
+    }
+
+    @MainActor
+    private func handleDiskChange() {
+        guard let url = fileURL else { return }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            postDiskChange(deleted: true)
+            return
+        }
+        guard let data = try? Data(contentsOf: url) else { return }
+        if data == encoded(text) || lastSavedText.map({ data == encoded($0) }) == true {
+            // Own save or same content: nothing to show. Take the new date so the next ⌘S does not warn.
+            if let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+                fileModificationDate = date
+            }
+            return
+        }
+        // The disk moved past our last save, so a later match with it is not our own echo.
+        lastSavedText = nil
+        if isDocumentEdited {
+            postDiskChange(deleted: false)
+            return
+        }
+        do {
+            try revert(toContentsOf: url, ofType: fileType ?? "net.daringfireball.markdown")
+        } catch {
+            presentError(error)
+        }
+    }
+
+    @MainActor
+    private func postDiskChange(deleted: Bool) {
+        NotificationCenter.default.post(name: Self.diskDidChange, object: self, userInfo: [Self.deletedKey: deleted])
     }
 
     /// Every "\n" not already after "\r" becomes "\r\n". The text view may insert lone "\n".
