@@ -291,11 +291,14 @@ private struct LineScanner {
 
         func free(_ k: Int) -> Bool { !blocked[k - start] }
 
-        // Pass 2: bold with `**` or `__`.
+        // Pass 2: bold with `**` or `__`. Each scan searches a suffix of the previous
+        // one, so once a marker has no closer, no later opener of it has one either.
+        var starClosed = true, underscoreClosed = true
         i = start
         while i + 1 < end {
             let c = chars[i]
-            guard (c == Ch.star || c == Ch.underscore), chars[i + 1] == c, free(i), free(i + 1) else {
+            guard (c == Ch.star ? starClosed : c == Ch.underscore && underscoreClosed),
+                  chars[i + 1] == c, free(i), free(i + 1) else {
                 i += 1
                 continue
             }
@@ -311,20 +314,26 @@ private struct LineScanner {
                 emit(close, 2, .boldMarker)
                 i = close + 2
             } else {
+                if close == nil {
+                    if c == Ch.star { starClosed = false } else { underscoreClosed = false }
+                }
                 i += 2
             }
         }
 
-        // Pass 3: links and images, `[text](url)` / `![alt](src)`.
+        // Pass 3: links and images, `[text](url)` / `![alt](src)`. Every `[` before `k`
+        // finds the same `]` at `k`, and every later scan searches a suffix of this one,
+        // so the pass stays linear: skip past `k`, or stop when a closer is missing.
         i = start
         while i < end {
             guard chars[i] == Ch.openBracket, free(i) else { i += 1; continue }
             var k = i + 1
             while k < end, !(chars[k] == Ch.closeBracket && free(k)) { k += 1 }
-            guard k + 1 < end, chars[k + 1] == Ch.openParen else { i += 1; continue }
+            guard k + 1 < end else { break }
+            guard chars[k + 1] == Ch.openParen else { i = k + 1; continue }
             var m = k + 2
             while m < end, !(chars[m] == Ch.closeParen && free(m)) { m += 1 }
-            guard m < end else { i += 1; continue }
+            guard m < end else { break }
             let linkStart = (i > start && chars[i - 1] == Ch.bang && free(i - 1)) ? i - 1 : i
             emit(linkStart, m + 1 - linkStart, .link)
             i = m + 1

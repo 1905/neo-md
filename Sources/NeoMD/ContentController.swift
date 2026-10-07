@@ -168,6 +168,8 @@ final class ContentController: NSViewController {
                            name: MarkdownDocument.didRevert, object: document)
         center.addObserver(self, selector: #selector(documentDidSave),
                            name: MarkdownDocument.didSave, object: document)
+        center.addObserver(self, selector: #selector(documentDidMove),
+                           name: MarkdownDocument.fileURLDidChange, object: document)
         banner.onKeepMine = { [weak self] in self?.setBannerVisible(false) }
         banner.onReload = { [weak self] in self?.reloadFromDisk() }
         findBar.onFind = { [weak self] string, backwards in self?.findInPreview(string, backwards: backwards) }
@@ -396,15 +398,28 @@ final class ContentController: NSViewController {
 
     private func pushToVisiblePreview() {
         guard let target = visiblePreview, renderedVersion >= 0 else { return }
+        // Before the version guard: the file may have moved while the text stayed the same.
+        target.documentFolder = documentFolder
         let shown = target === preview ? previewVersion : splitPreviewVersion
         guard shown != renderedVersion else { return }
-        target.documentFolder = document.fileURL?.deletingLastPathComponent()
         if let html = renderedHTML {
             target.update(html: html)
         } else {
             target.showError("Could not render this file.")
         }
         if target === preview { previewVersion = renderedVersion } else { splitPreviewVersion = renderedVersion }
+    }
+
+    private var documentFolder: URL? { document.fileURL?.deletingLastPathComponent() }
+
+    /// The file moved or was saved under a new name: relative links and images must
+    /// resolve against the new folder, so both previews get it and a fresh push.
+    /// The Split preview is lazy; it gets the folder on its next push.
+    @objc private func documentDidMove(_ note: Notification) {
+        preview.documentFolder = documentFolder
+        previewVersion = -1
+        splitPreviewVersion = -1
+        pushToVisiblePreview()
     }
 
     // MARK: - Scroll sync (Split only, editor → preview)

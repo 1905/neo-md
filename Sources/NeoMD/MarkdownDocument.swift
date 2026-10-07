@@ -13,6 +13,9 @@ final class MarkdownDocument: NSDocument {
     /// Posted (object: the document) right before and right after a revert, so views can keep their scroll position.
     static let willRevert = Notification.Name("NeoMDMarkdownDocumentWillRevert")
     static let didRevert = Notification.Name("NeoMDMarkdownDocumentDidRevert")
+    /// Posted (object: the document) on the main queue after `fileURL` changes:
+    /// a move or rename on disk, Save As, Move To.
+    static let fileURLDidChange = Notification.Name("NeoMDMarkdownDocumentFileURLDidChange")
 
     /// The source. The editor writes here.
     var text: String = ""
@@ -22,6 +25,20 @@ final class MarkdownDocument: NSDocument {
     var lastSavedText: String?
 
     override class var autosavesInPlace: Bool { false }
+
+    /// `presentedItemDidMove(to:)` keeps the NSDocument default, which sets this.
+    /// AppKit may set it off the main thread, so the notification goes to the main queue.
+    override var fileURL: URL? {
+        didSet {
+            guard fileURL != oldValue else { return }
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    NotificationCenter.default.post(name: Self.fileURLDidChange, object: self)
+                }
+            }
+        }
+    }
 
     override func canAsynchronouslyWrite(to url: URL, ofType typeName: String,
                                          for saveOperation: NSDocument.SaveOperationType) -> Bool {
@@ -85,7 +102,8 @@ final class MarkdownDocument: NSDocument {
     // MARK: - Disk changes (NSFilePresenter)
 
     // NSDocument calls these on its presenter queue. The work runs on the main queue.
-    // `presentedItemDidMove(to:)` keeps the NSDocument default: it updates `fileURL`.
+    // `presentedItemDidMove(to:)` keeps the NSDocument default: it updates `fileURL`,
+    // whose observer posts `fileURLDidChange`.
 
     override func presentedItemDidChange() {
         DispatchQueue.main.async { [weak self] in

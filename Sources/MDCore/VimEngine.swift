@@ -24,6 +24,9 @@ public final class VimEngine {
     /// Visual mode: the fixed end and the moving end of the selection (grapheme starts).
     private var visualAnchor = 0
     private var visualHead = 0
+    /// The selection the engine last emitted in visual mode. A different incoming
+    /// selection means the mouse or a native action changed it.
+    private var visualSelection: NSRange?
     /// The moving end of the visual selection (where the block cursor goes); nil outside visual modes.
     public var visualCursor: Int? { mode == .visual || mode == .visualLine ? visualHead : nil }
     /// Last `/` pattern, for `n`, `N` and an empty `/`.
@@ -42,7 +45,7 @@ public final class VimEngine {
         case .normal:
             return handleNormal(key, text: text, cursor: TextNav.normalCursor(selection.location, in: text))
         case .visual, .visualLine:
-            return handleVisual(key, text: text)
+            return handleVisual(key, text: text, selection: selection)
         case .command:
             return handleCommand(key, text: text, cursor: TextNav.normalCursor(selection.location, in: text))
         }
@@ -51,6 +54,7 @@ public final class VimEngine {
     /// Back to .normal, clears pending count/operator.
     public func reset() {
         mode = .normal
+        visualSelection = nil
         commandLine = nil
         clearPending()
         preferredColumn = nil
@@ -209,10 +213,15 @@ public final class VimEngine {
         if target.inclusive {
             let ln = TextNav.line(at: target.position, in: text)
             hi = max(cursor, min(TextNav.nextGrapheme(after: target.position, in: text), ln.contentsEnd))
-        } else if motion == .wordForward,
-                  TextNav.lineIndex(at: target.position, in: text) > TextNav.lineIndex(at: cursor, in: text) {
-            // `dw` on the last word of a line stops at the line end, it does not join lines.
-            hi = max(lo, TextNav.line(at: target.position - 1, in: text).contentsEnd)
+        } else if motion == .wordForward {
+            // Vim rule: when the last `w` step leaves its line, the operated text ends
+            // at the end of the line that step started on. Earlier steps cross lines.
+            let n = max(count ?? 1, 1)
+            let lastStepStart = n > 1
+                ? motion.target(from: cursor, count: n - 1, in: text, preferredColumn: nil).position : cursor
+            if TextNav.lineIndex(at: target.position, in: text) > TextNav.lineIndex(at: lastStepStart, in: text) {
+                hi = max(lo, TextNav.line(at: lastStepStart, in: text).contentsEnd)
+            }
         }
         return applyCharwise(op, range: NSRange(location: lo, length: hi - lo), text: text)
     }
@@ -289,7 +298,17 @@ public final class VimEngine {
 
     // MARK: visual mode
 
-    private func handleVisual(_ key: VimKey, text: NSString) -> [VimAction] {
+    private func handleVisual(_ key: VimKey, text: NSString, selection: NSRange) -> [VimAction] {
+        if let shown = visualSelection, selection != shown {
+            // The selection changed outside the engine: adopt it and stay in visual mode.
+            // The anchor is its first character and the head its last; the drag direction is unknown.
+            let start = min(selection.location, text.length)
+            let end = min(NSMaxRange(selection), text.length)
+            visualAnchor = start
+            visualHead = end > start ? TextNav.previousGrapheme(before: end, in: text) : start
+            visualSelection = selection
+            columnAnchor = nil
+        }
         visualAnchor = TextNav.normalCursor(min(visualAnchor, text.length), in: text)
         visualHead = TextNav.normalCursor(min(visualHead, text.length), in: text)
         if Self.isEscape(key) { return exitVisual() }
@@ -305,7 +324,7 @@ public final class VimEngine {
             visualHead = TextNav.normalCursor(target.position, in: text)
             preferredColumn = target.column
             columnAnchor = visualHead
-            return [.setSelection(visualRange(text))]
+            return showVisual(text)
         case .other: break
         }
         clearPending()
@@ -328,7 +347,13 @@ public final class VimEngine {
 
     private func enterVisual(_ visualMode: VimMode, text: NSString) -> [VimAction] {
         mode = visualMode
-        return [.setMode(visualMode), .setSelection(visualRange(text))]
+        return [.setMode(visualMode)] + showVisual(text)
+    }
+
+    private func showVisual(_ text: NSString) -> [VimAction] {
+        let range = visualRange(text)
+        visualSelection = range
+        return [.setSelection(range)]
     }
 
     private func exitVisual() -> [VimAction] {
@@ -460,6 +485,7 @@ public final class VimEngine {
         guard mode != newMode else { return [] }
         let wasCommand = mode == .command
         mode = newMode
+        visualSelection = nil
         preferredColumn = nil
         columnAnchor = nil
         if wasCommand {

@@ -194,3 +194,23 @@ private func tokens(_ list: [HighlightSpan]) -> [MarkdownToken] { list.map(\.tok
     #expect(MarkdownHighlighter.spans(in: ns, lineRange: last).contains(span(last.location + 2, 4, .heading)))
     #expect(elapsed < 1.0, "100 calls took \(elapsed) s")
 }
+
+/// Unmatched openers must not rescan the rest of the line for each opener.
+@Test(arguments: [
+    String(repeating: "[", count: 20_000),
+    String(repeating: "[", count: 19_999) + "]",
+    String(repeating: "[](", count: 7_000),
+    String(repeating: "**", count: 10_000),
+    "**" + String(repeating: "a", count: 20_000),
+    String(repeating: "*_", count: 10_000),
+])
+func longLineWithUnmatchedOpenersIsLinear(_ line: String) {
+    let elapsed = ContinuousClock().measure { _ = spans(line) }
+    #expect(elapsed < .milliseconds(200))
+}
+
+@Test func linkAfterABracketWithoutParenthesis() {
+    #expect(spans("[a] [b](c)").contains(span(4, 6, .link)))
+    #expect(spans("[a [b](c)").contains(span(0, 9, .link)))
+    #expect(!tokens(spans("[a](b")).contains(.link))
+}

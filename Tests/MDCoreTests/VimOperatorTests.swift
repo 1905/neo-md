@@ -20,6 +20,13 @@ private func check(_ c: EditCase) {
         .init("foo bar\nbaz", 4, "dw", "foo \nbaz", 3, .normal),   // dw stops at the line end
         .init("foo bar baz", 0, "d2w", "baz", 0, .normal),
         .init("foo bar baz", 0, "2dw", "baz", 0, .normal),
+        // `dw` on the last word of a line stops at that line's end, whatever the next line holds.
+        .init("one\n  two\nthree", 0, "dw", "\n  two\nthree", 0, .normal),
+        .init("foo\n\nbar", 0, "dw", "\n\nbar", 0, .normal),
+        .init("one\r\n  two", 0, "dw", "\r\n  two", 0, .normal),
+        .init("a b\n  c\nd", 0, "2dw", "\n  c\nd", 0, .normal),
+        // Only the last `w` step stops at the line end; earlier steps cross lines.
+        .init("a b\nc d\ne", 2, "2dw", "a d\ne", 2, .normal),
         .init("привет мир", 0, "dw", "мир", 0, .normal),
         .init("foo bar", 0, "de", " bar", 0, .normal),
         .init("foo bar", 4, "db", "bar", 0, .normal),
@@ -93,6 +100,7 @@ private func check(_ c: EditCase) {
         .init("foo bar", 0, "cwxy<Esc>", "xy bar", 1, .normal),
         .init("foo bar baz", 0, "c2w", " baz", 0, .insert),
         .init("foo  bar", 3, "cw", "foo bar", 3, .insert),         // on a blank: one character
+        .init("one\n  two", 0, "cw", "\n  two", 0, .insert),
         .init("foo bar", 4, "C", "foo ", 4, .insert),
         .init("foo bar", 4, "c$", "foo ", 4, .insert),
         .init("a\nbc\nd", 2, "cc", "a\n\nd", 2, .insert),
@@ -135,6 +143,8 @@ private func check(_ c: EditCase) {
 
     @Test(arguments: [
         ("foo bar", 0, "yw", "foo "),
+        ("one\n  two", 0, "yw", "one"),
+        ("one\r\n  two", 0, "yw", "one"),
         ("a\nb", 0, "yy", "a\n"),
         ("a\nb", 2, "yy", "b\n"),
         ("foo bar", 0, "vey", "foo"),
@@ -198,6 +208,28 @@ private func check(_ c: EditCase) {
         _ = run("a\nb", cursor: 0, "Vy", engine: e)
         #expect(e.registerIsLinewise)
         #expect(e.register == "a\n")
+    }
+
+    /// A selection changed outside the engine (mouse drag, a native action) replaces
+    /// the engine's own: anchor = its first character, head = its last.
+    @Test func operatorUsesASelectionChangedOutsideTheEngine() {
+        let e = VimEngine()
+        let text = "alpha beta"
+        _ = run(text, cursor: 0, "ve", engine: e)
+        let actions = e.handle(VimKey("d"), text: text as NSString, selection: NSRange(location: 6, length: 4))
+        #expect(actions.contains(.replace(NSRange(location: 6, length: 4), "")))
+        #expect(e.register == "beta")
+        #expect(e.mode == .normal)
+    }
+
+    @Test func motionExtendsASelectionChangedOutsideTheEngine() {
+        let e = VimEngine()
+        let text = "alpha beta gamma"
+        _ = run(text, cursor: 0, "ve", engine: e)
+        let actions = e.handle(VimKey("e"), text: text as NSString, selection: NSRange(location: 6, length: 4))
+        #expect(actions == [.setSelection(NSRange(location: 6, length: 10))])
+        #expect(e.mode == .visual)
+        #expect(e.visualCursor == 15)
     }
 
     @Test func visualDeleteFillsTheRegister() {
