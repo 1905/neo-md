@@ -34,7 +34,37 @@ final class MarkdownDocument: NSDocument {
         NotificationCenter.default.post(name: MarkdownDocument.textDidChange, object: self)
     }
 
+    /// Text handed to the last `data(ofType:)` call; becomes `lastSavedText` when the save succeeds.
+    private var pendingSavedText: String?
+
     override func data(ofType typeName: String) throws -> Data {
-        Data(text.utf8)
+        pendingSavedText = text
+        let utf8 = Data(text.utf8)
+        return lineEnding == "\r\n" ? Self.convertingLoneLFToCRLF(utf8) : utf8
+    }
+
+    override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType,
+                       completionHandler: @escaping (Error?) -> Void) {
+        pendingSavedText = nil
+        super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
+            if let self, error == nil, let saved = self.pendingSavedText {
+                self.lastSavedText = saved
+            }
+            self?.pendingSavedText = nil
+            completionHandler(error)
+        }
+    }
+
+    /// Every "\n" not already after "\r" becomes "\r\n". The text view may insert lone "\n".
+    static func convertingLoneLFToCRLF(_ data: Data) -> Data {
+        var out = Data()
+        out.reserveCapacity(data.count + data.count / 32)
+        var previous: UInt8 = 0
+        for byte in data {
+            if byte == 0x0A, previous != 0x0D { out.append(0x0D) }
+            out.append(byte)
+            previous = byte
+        }
+        return out
     }
 }
