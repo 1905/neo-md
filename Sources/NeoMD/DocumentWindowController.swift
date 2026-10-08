@@ -80,7 +80,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
     private func updateSubtitle(edited: Bool) {
         var parts: [String] = []
         if edited { parts.append("Edited") }
-        if let folder = (document as? NSDocument)?.fileURL?.deletingLastPathComponent() {
+        if let folder = (document as? MarkdownDocument)?.folderURL {
             parts.append((folder.path as NSString).abbreviatingWithTildeInPath)
         }
         window?.subtitle = parts.joined(separator: " · ")
@@ -232,7 +232,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         contentController.render()
     }
 
-    /// ⌘F and the magnifier button. Render: the web find bar. Raw / Split: the text view's find bar.
+    /// File > Export as PDF… / Export as HTML….
     @objc func exportPDF(_ sender: Any?) {
         guard let doc = document as? MarkdownDocument, let window else { return }
         Exporter.exportPDF(document: doc, window: window)
@@ -243,6 +243,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         Exporter.exportHTML(document: doc, window: window)
     }
 
+    /// ⌘F and the magnifier button. Render: the web find bar. Raw / Split: the text view's find bar.
     @objc func showFind(_ sender: Any?) {
         contentController.showFind()
     }

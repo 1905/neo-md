@@ -25,7 +25,7 @@ enum Exporter {
         askForTarget(document: document, window: window, type: .pdf, ext: "pdf") { url in
             do {
                 let page = try exportPage(for: document)
-                PDFExportJob.start(page: page, documentFolder: document.fileURL?.deletingLastPathComponent(),
+                PDFExportJob.start(page: page, documentFolder: document.folderURL,
                                    title: baseName(of: document), target: url, window: window)
             } catch {
                 window.presentError(error)
@@ -42,7 +42,7 @@ enum Exporter {
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = "\(baseName(of: document)).\(ext)"
         // Next to the Markdown file, so relative links and images keep working.
-        if let folder = document.fileURL?.deletingLastPathComponent() {
+        if let folder = document.folderURL {
             panel.directoryURL = folder
         }
         panel.beginSheetModal(for: window) { response in
@@ -58,14 +58,11 @@ enum Exporter {
 
     private static func exportPage(for document: MarkdownDocument) throws -> String {
         guard let result = MarkdownRenderer.render(document.text) else {
-            throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteUnknownError, userInfo: [
-                NSLocalizedDescriptionKey: "The document could not be rendered.",
-            ])
+            throw exportError("The document could not be rendered.")
         }
         let settings = Settings.shared
         return HTMLTemplate.exportPage(body: result.html, title: baseName(of: document),
-                                       readingFont: settings.readingFont,
-                                       scale: FontScale.factor(step: settings.fontScale))
+                                       readingFont: settings.readingFont, scale: settings.textScale)
     }
 }
 
@@ -153,7 +150,7 @@ private final class PDFExportJob: NSObject, WKNavigationDelegate {
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        fail(Self.error("The PDF renderer stopped unexpectedly."))
+        fail(exportError("The PDF renderer stopped unexpectedly."))
     }
 
     // MARK: - Print
@@ -163,7 +160,7 @@ private final class PDFExportJob: NSObject, WKNavigationDelegate {
         if success {
             finish()
         } else {
-            fail(Self.error("The PDF could not be written to \u{201C}\(target.lastPathComponent)\u{201D}."))
+            fail(exportError("The PDF could not be written to \u{201C}\(target.lastPathComponent)\u{201D}."))
         }
     }
 
@@ -180,9 +177,10 @@ private final class PDFExportJob: NSObject, WKNavigationDelegate {
         webView.stopLoading()
         Self.active.removeAll { $0 === self }
     }
+}
 
-    private static func error(_ message: String) -> NSError {
-        NSError(domain: NSCocoaErrorDomain, code: NSFileWriteUnknownError,
-                userInfo: [NSLocalizedDescriptionKey: message])
-    }
+/// An export failure with `message` as its description.
+private func exportError(_ message: String) -> NSError {
+    NSError(domain: NSCocoaErrorDomain, code: NSFileWriteUnknownError,
+            userInfo: [NSLocalizedDescriptionKey: message])
 }

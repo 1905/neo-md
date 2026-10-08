@@ -5,7 +5,8 @@ enum KeyBindings: String { case standard, vim }
 
 enum DocTab: Int { case render = 0, raw = 1, split = 2 }
 
-enum AppTheme: String { case system, light, dark }
+/// Case order = the order of the Theme segments in Settings → Appearance.
+enum AppTheme: String, CaseIterable { case system, light, dark }
 
 /// App-wide settings backed by `UserDefaults`. Every change posts `Settings.didChange`.
 final class Settings {
@@ -57,6 +58,20 @@ final class Settings {
         get { FontScale.clamp(defaults.integer(forKey: Key.fontScale)) }
         set { set(FontScale.clamp(newValue), for: Key.fontScale) }
     }
+
+    /// The size factor of the current text size step.
+    var textScale: Double { FontScale.factor(step: fontScale) }
+
+    /// One text size step up (`delta` 1) or down (-1). Returns false and changes nothing at a limit.
+    func stepFontScale(by delta: Int) -> Bool {
+        let next = fontScale + delta
+        guard FontScale.steps.contains(next) else { return false }
+        fontScale = next
+        return true
+    }
+
+    /// The preview and export typography rule for the reading font and text size now.
+    var typographyCSS: String { HTMLTemplate.typographyCSS(readingFont: readingFont, scale: textScale) }
 
     /// Reading font family. Empty = the system font.
     var readingFont: String {

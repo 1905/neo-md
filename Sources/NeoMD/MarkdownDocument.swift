@@ -26,6 +26,9 @@ final class MarkdownDocument: NSDocument {
 
     override class var autosavesInPlace: Bool { false }
 
+    /// The folder of the file: the base for relative links and images. Nil while unsaved.
+    var folderURL: URL? { fileURL?.deletingLastPathComponent() }
+
     /// `presentedItemDidMove(to:)` keeps the NSDocument default, which sets this.
     /// AppKit may set it off the main thread, so the notification goes to the main queue.
     override var fileURL: URL? {

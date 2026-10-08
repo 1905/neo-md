@@ -34,7 +34,7 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
     private var pane: Pane = .general
 
     private init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 200),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: SettingsForm.width, height: 200),
                               styleMask: [.titled, .closable, .miniaturizable],
                               backing: .buffered, defer: true)
         window.toolbarStyle = .preference
@@ -60,7 +60,6 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
     func show() {
         if pane == .general { general.refreshDefaultApp() }
         showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
     }
 
     private func view(for pane: Pane) -> NSView {

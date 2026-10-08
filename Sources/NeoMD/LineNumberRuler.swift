@@ -6,9 +6,8 @@ import AppKit
 /// past its 56 pt minimum when the numbers need it (many lines or a large text size).
 final class LineNumberRuler: NSRulerView {
     static let minWidth: CGFloat = 56
+    static let leftPadding: CGFloat = 8
     static let rightPadding: CGFloat = 16
-    /// Space around the widest number: 8 pt left plus `rightPadding`.
-    static let padding: CGFloat = 24
 
     private weak var textView: MarkdownTextView?
     /// Baseline offset inside a line fragment, taken from the last drawn line.
@@ -35,31 +34,27 @@ final class LineNumberRuler: NSRulerView {
     override var isFlipped: Bool { true }
     override var requiredThickness: CGFloat { width }
 
-    /// Same family as the editor font, at the smaller gutter size.
-    private static var numberFont: NSFont {
-        let size = 11 * EditorStyle.factor
-        return NSFontManager.shared.convert(EditorStyle.font, toSize: size)
-    }
-
-    /// `max(56, digits × digit width + 24)` for the line count and text size now.
+    /// `max(56, digits × digit width + left and right padding)` for the line count and text size now.
+    /// The digits use `EditorStyle.current.numberFont`: the editor family at the smaller gutter size.
     private var width: CGFloat {
         let digits = String(textView?.lineStarts.count ?? 1).count
-        let digitWidth = ("0" as NSString).size(withAttributes: [.font: Self.numberFont]).width
-        return max(Self.minWidth, (CGFloat(digits) * digitWidth + Self.padding).rounded(.up))
+        let digitWidth = EditorStyle.current.digitWidth
+        return max(Self.minWidth, (CGFloat(digits) * digitWidth + Self.leftPadding + Self.rightPadding).rounded(.up))
     }
 
     /// Sets the gutter width if the line count or the text size changed it. The change runs on the
     /// next main-loop pass, because the scroll view re-tiles and this can be called during layout.
+    /// Called by `MarkdownTextView` when the digit count of the line count or the typography changes.
     func updateThickness() {
         guard width != ruleThickness else { return }
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.width != self.ruleThickness else { return }
-            self.ruleThickness = self.width
+            guard let self else { return }
+            let width = self.width
+            if width != self.ruleThickness { self.ruleThickness = width }
         }
     }
 
     @objc private func redraw() {
-        updateThickness()
         needsDisplay = true
     }
 
@@ -102,7 +97,7 @@ final class LineNumberRuler: NSRulerView {
 
     /// `baseline` is in text container coordinates.
     private func drawNumber(_ number: Int, baseline: CGFloat, current: Bool, in textView: NSTextView) {
-        let font = Self.numberFont
+        let font = EditorStyle.current.numberFont
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: current ? NSColor.labelColor : NSColor.tertiaryLabelColor,

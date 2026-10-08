@@ -16,8 +16,8 @@ public enum HTMLTemplate {
       --rule: #e8e8e6;
       --accent: #0a64d8;
       --reading-font: \#(systemFontStack);
-      --reading-size: 15.5px;
-      --split-size: 14.5px;
+      --reading-size: \#(px(readingSize));
+      --split-size: \#(px(splitSize));
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -83,11 +83,15 @@ public enum HTMLTemplate {
     /// The system font stack. It is the reading font when the user picks none, and the fallback otherwise.
     static let systemFontStack = #"-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif"#
 
+    /// Body and split text sizes in px at scale 1.
+    static let readingSize = 15.5
+    static let splitSize = 14.5
+
     /// A `:root` rule that sets the reading font and the text sizes. Put it after `css` to override the defaults.
-    /// An empty `readingFont` gives only the system font stack. `scale` multiplies 15.5 px (body) and 14.5 px (split).
+    /// An empty `readingFont` gives only the system font stack. `scale` multiplies `readingSize` and `splitSize`.
     public static func typographyCSS(readingFont: String, scale: Double) -> String {
         let family = readingFont.isEmpty ? systemFontStack : "\(cssString(readingFont)), \(systemFontStack)"
-        return ":root{--reading-font:\(family);--reading-size:\(px(15.5 * scale));--split-size:\(px(14.5 * scale))}"
+        return ":root{--reading-font:\(family);--reading-size:\(px(readingSize * scale));--split-size:\(px(splitSize * scale))}"
     }
 
     /// A standalone page for export: Render styles, the reading font and size, `body` inside `<article>`.
@@ -139,7 +143,8 @@ public enum HTMLTemplate {
         return text + "px"
     }
 
-    static func htmlEscape(_ text: String) -> String {
+    /// Escapes `&`, `<`, `>` and `"` for HTML text and attribute values.
+    public static func htmlEscape(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")

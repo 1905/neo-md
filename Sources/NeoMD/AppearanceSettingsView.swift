@@ -78,23 +78,19 @@ final class AppearanceSettingsView: NSView {
 
     private func refresh() {
         let settings = Settings.shared
-        switch settings.theme {
-        case .system: theme.selectedSegment = 0
-        case .light: theme.selectedSegment = 1
-        case .dark: theme.selectedSegment = 2
-        }
+        theme.selectedSegment = AppTheme.allCases.firstIndex(of: settings.theme) ?? 0
         readingName.stringValue = Self.displayName(settings.readingFont, fallback: "System font")
         editorName.stringValue = Self.displayName(settings.editorFont, fallback: "SF Mono")
         readingReset.isHidden = settings.readingFont.isEmpty
         editorReset.isHidden = settings.editorFont.isEmpty
-        sizeLabel.stringValue = "\(Int((FontScale.factor(step: settings.fontScale) * 100).rounded())) %"
+        sizeLabel.stringValue = "\(Int((settings.textScale * 100).rounded())) %"
         sizeStepper.setEnabled(settings.fontScale > FontScale.steps.lowerBound, forSegment: 0)
         sizeStepper.setEnabled(settings.fontScale < FontScale.steps.upperBound, forSegment: 1)
     }
 
     /// The saved family, or "<fallback> (default)" when it is empty or no longer installed.
     private static func displayName(_ family: String, fallback: String) -> String {
-        if !family.isEmpty, NSFontManager.shared.availableFontFamilies.contains(family) { return family }
+        if !family.isEmpty, NSFontManager.shared.availableMembers(ofFontFamily: family) != nil { return family }
         return "\(fallback) (default)"
     }
 
@@ -103,19 +99,13 @@ final class AppearanceSettingsView: NSView {
     // MARK: - Actions
 
     @objc private func themeChanged(_ sender: NSSegmentedControl) {
-        let themes: [AppTheme] = [.system, .light, .dark]
+        let themes = AppTheme.allCases
         guard themes.indices.contains(sender.selectedSegment) else { return }
         Settings.shared.theme = themes[sender.selectedSegment]
     }
 
     @objc private func sizeClicked(_ sender: NSSegmentedControl) {
-        let current = Settings.shared.fontScale
-        let next = current + (sender.selectedSegment == 0 ? -1 : 1)
-        guard FontScale.steps.contains(next) else {
-            NSSound.beep()
-            return
-        }
-        Settings.shared.fontScale = next
+        if !Settings.shared.stepFontScale(by: sender.selectedSegment == 0 ? -1 : 1) { NSSound.beep() }
     }
 
     @objc private func resetFont(_ sender: NSButton) {
@@ -140,8 +130,7 @@ final class AppearanceSettingsView: NSView {
                 ?? NSFontManager.shared.font(withFamily: Settings.shared.readingFont, traits: [], weight: 5, size: size)
                 ?? .systemFont(ofSize: size)
         case .editor:
-            return NSFontManager.shared.font(withFamily: Settings.shared.editorFont, traits: [], weight: 5, size: size)
-                ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+            return NSFontManager.shared.convert(EditorStyle.font, toSize: size)
         }
     }
 

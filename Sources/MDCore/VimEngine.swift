@@ -11,9 +11,8 @@ public final class VimEngine {
 
     /// Digits typed before a command (or before the motion of an operator). nil = no count.
     private var pendingCount: Int?
-    /// `g` typed, waiting for the second key (`gg`).
-    private var pendingG = false
-    private var pendingZ = false
+    /// `g` or `Z` typed, waiting for the second key (`gg`, `ZZ`, `ZQ`).
+    private var pendingPrefix: Character?
     /// `d c y` typed, waiting for a motion or a second `d c y`.
     private var pendingOperator: VimOperator?
     /// Count typed before the operator (`2` in `2dw`).
@@ -87,8 +86,8 @@ public final class VimEngine {
 
     /// Consumes count digits and the `g` prefix; resolves a motion key.
     private func motionKey(_ key: VimKey) -> MotionKey {
-        if pendingG {
-            pendingG = false
+        if pendingPrefix == "g" {
+            pendingPrefix = nil
             return key.chars == "g" ? .motion(.firstLine) : .invalid
         }
         if let digit = Int(key.chars), digit >= 0, digit <= 9, key.chars.count == 1,
@@ -98,7 +97,7 @@ public final class VimEngine {
         }
         if let motion = Self.motions[key.chars] { return .motion(motion) }
         if key.chars == "g" {
-            pendingG = true
+            pendingPrefix = "g"
             return .pending
         }
         return .other
@@ -126,7 +125,7 @@ public final class VimEngine {
             return beep()
         }
         // `ZZ` = `:x` (save and close), `ZQ` = `:q!` (close without saving).
-        if pendingZ {
+        if pendingPrefix == "Z" {
             clearPending()
             switch key.chars {
             case "Z": return [.save, .close]
@@ -134,9 +133,9 @@ public final class VimEngine {
             default: return beep()
             }
         }
-        if key.chars == "Z", pendingOperator == nil, !pendingG {
+        if key.chars == "Z", pendingOperator == nil, pendingPrefix == nil {
             pendingCount = nil
-            pendingZ = true
+            pendingPrefix = "Z"
             return []
         }
         switch motionKey(key) {
@@ -536,8 +535,7 @@ public final class VimEngine {
 
     private func clearPending() {
         pendingCount = nil
-        pendingG = false
-        pendingZ = false
+        pendingPrefix = nil
         pendingOperator = nil
         operatorCount = nil
     }

@@ -50,12 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func stepFontScale(by delta: Int) {
-        let next = Settings.shared.fontScale + delta
-        guard FontScale.steps.contains(next) else {
-            NSSound.beep()
-            return
-        }
-        Settings.shared.fontScale = next
+        if !Settings.shared.stepFontScale(by: delta) { NSSound.beep() }
     }
 
     // MARK: - Theme

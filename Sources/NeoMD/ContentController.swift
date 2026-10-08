@@ -415,7 +415,7 @@ final class ContentController: NSViewController {
         if target === preview { previewVersion = renderedVersion } else { splitPreviewVersion = renderedVersion }
     }
 
-    private var documentFolder: URL? { document.fileURL?.deletingLastPathComponent() }
+    private var documentFolder: URL? { document.folderURL }
 
     /// The file moved or was saved under a new name: relative links and images must
     /// resolve against the new folder, so both previews get it and a fresh push.

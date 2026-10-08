@@ -82,7 +82,7 @@ final class PreviewWebView: NSView {
     }
 
     func showError(_ message: String) {
-        update(html: "<p class=\"error\">\(Self.escapeHTML(message))</p>")
+        update(html: "<p class=\"error\">\(HTMLTemplate.htmlEscape(message))</p>")
     }
 
     /// Selects the next (or previous) match, wrapping, case-insensitive. `completion(true)` = a match was found.
@@ -147,9 +147,7 @@ final class PreviewWebView: NSView {
     /// Sets the reading font and text size from `Settings` on the page. Skips the call if nothing changed.
     func applyTypography() {
         guard pageLoaded else { return }
-        let settings = Settings.shared
-        let css = HTMLTemplate.typographyCSS(readingFont: settings.readingFont,
-                                             scale: FontScale.factor(step: settings.fontScale))
+        let css = Settings.shared.typographyCSS
         guard css != appliedTypography else { return }
         appliedTypography = css
         webView.evaluateJavaScript("setTypography(\(Self.jsStringLiteral(css)))", completionHandler: nil)
@@ -207,13 +205,6 @@ final class PreviewWebView: NSView {
         guard let data = try? JSONSerialization.data(withJSONObject: [s]),
               let json = String(data: data, encoding: .utf8) else { return "\"\"" }
         return "\(json)[0]"
-    }
-
-    static func escapeHTML(_ s: String) -> String {
-        s.replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
     }
 }
 
