@@ -46,6 +46,8 @@ final class LineNumberRuler: NSRulerView {
     /// next main-loop pass, because the scroll view re-tiles and this can be called during layout.
     /// Called by `MarkdownTextView` when the digit count of the line count or the typography changes.
     func updateThickness() {
+        // The font can change without a width change (Menlo and SF Mono digits are the same width).
+        needsDisplay = true
         guard width != ruleThickness else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

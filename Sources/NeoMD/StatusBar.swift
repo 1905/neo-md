@@ -88,9 +88,10 @@ final class StatusBar: NSView {
 
     /// Render tab text: line count (locale grouping), size, encoding.
     static func renderInfo(for text: String) -> String {
-        let lines = lineFormatter.string(from: NSNumber(value: lineCount(text))) ?? "0"
+        let count = lineCount(text)
+        let lines = lineFormatter.string(from: NSNumber(value: count)) ?? "0"
         let size = sizeFormatter.string(fromByteCount: Int64(text.utf8.count))
-        return "\(lines) lines · \(size) · UTF-8"
+        return "\(lines) \(count == 1 ? "line" : "lines") · \(size) · UTF-8"
     }
 
     /// Raw and Split text: `Ln 23, Col 48 · UTF-8 · LF` (or `CRLF`).
