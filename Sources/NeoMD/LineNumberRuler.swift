@@ -2,9 +2,13 @@ import AppKit
 
 /// Line-number gutter for `MarkdownTextView`. One number per logical line,
 /// drawn on the first line fragment of that line.
+/// The numbers are `11 pt × EditorStyle.factor` with monospaced digits. The gutter grows
+/// past its 56 pt minimum when the numbers need it (many lines or a large text size).
 final class LineNumberRuler: NSRulerView {
-    static let width: CGFloat = 56
+    static let minWidth: CGFloat = 56
     static let rightPadding: CGFloat = 16
+    /// Space around the widest number: 8 pt left plus `rightPadding`.
+    static let padding: CGFloat = 24
 
     private weak var textView: MarkdownTextView?
     /// Baseline offset inside a line fragment, taken from the last drawn line.
@@ -15,7 +19,7 @@ final class LineNumberRuler: NSRulerView {
         self.textView = textView
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clientView = textView
-        ruleThickness = Self.width
+        ruleThickness = width
 
         let center = NotificationCenter.default
         textView.postsFrameChangedNotifications = true
@@ -29,9 +33,33 @@ final class LineNumberRuler: NSRulerView {
     required init(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override var isFlipped: Bool { true }
-    override var requiredThickness: CGFloat { Self.width }
+    override var requiredThickness: CGFloat { width }
 
-    @objc private func redraw() { needsDisplay = true }
+    private static var numberFont: NSFont {
+        .monospacedDigitSystemFont(ofSize: 11 * EditorStyle.factor, weight: .regular)
+    }
+
+    /// `max(56, digits × digit width + 24)` for the line count and text size now.
+    private var width: CGFloat {
+        let digits = String(textView?.lineStarts.count ?? 1).count
+        let digitWidth = ("0" as NSString).size(withAttributes: [.font: Self.numberFont]).width
+        return max(Self.minWidth, (CGFloat(digits) * digitWidth + Self.padding).rounded(.up))
+    }
+
+    /// Sets the gutter width if the line count or the text size changed it. The change runs on the
+    /// next main-loop pass, because the scroll view re-tiles and this can be called during layout.
+    func updateThickness() {
+        guard width != ruleThickness else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.width != self.ruleThickness else { return }
+            self.ruleThickness = self.width
+        }
+    }
+
+    @objc private func redraw() {
+        updateThickness()
+        needsDisplay = true
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         // Since macOS 14 views do not clip to bounds, and the ruler overlaps the
@@ -72,7 +100,7 @@ final class LineNumberRuler: NSRulerView {
 
     /// `baseline` is in text container coordinates.
     private func drawNumber(_ number: Int, baseline: CGFloat, current: Bool, in textView: NSTextView) {
-        let font = EditorStyle.font
+        let font = Self.numberFont
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: current ? NSColor.labelColor : NSColor.tertiaryLabelColor,
@@ -80,7 +108,7 @@ final class LineNumberRuler: NSRulerView {
         let label = String(number) as NSString
         let size = label.size(withAttributes: attributes)
         let point = convert(NSPoint(x: 0, y: baseline + textView.textContainerOrigin.y), from: textView)
-        label.draw(at: NSPoint(x: Self.width - Self.rightPadding - size.width, y: point.y - font.ascender),
+        label.draw(at: NSPoint(x: ruleThickness - Self.rightPadding - size.width, y: point.y - font.ascender),
                    withAttributes: attributes)
     }
 }

@@ -2,18 +2,53 @@ import AppKit
 import MDCore
 
 /// Fonts, metrics and colours of the raw editor. Colours follow `mockup/base.css`.
+/// Fonts and line height follow `Settings.editorFont` and `Settings.fontScale`.
 enum EditorStyle {
-    static let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-    static let boldFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .bold)
-    static let lineHeight: CGFloat = 21
+    /// The size factor of the current text size step.
+    static var factor: CGFloat { CGFloat(FontScale.factor(step: Settings.shared.fontScale)) }
+    /// 13 pt at step 0.
+    static var size: CGFloat { 13 * factor }
+    static var font: NSFont { fonts().regular }
+    static var boldFont: NSFont { fonts().bold }
+    /// 21 pt at step 0.
+    static var lineHeight: CGFloat { (size * 21 / 13).rounded() }
     static let topInset: CGFloat = 20
 
-    static let paragraphStyle: NSParagraphStyle = {
+    static var paragraphStyle: NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         style.minimumLineHeight = lineHeight
         style.maximumLineHeight = lineHeight
         return style
-    }()
+    }
+
+    /// Changes when the editor font or the text size changes.
+    static var typographyKey: String { "\(Settings.shared.editorFont)|\(Settings.shared.fontScale)" }
+
+    /// Fonts for `typographyKey`. The editor reads them on every edit and redraw, so they are cached.
+    private static var cache: (key: String, regular: NSFont, bold: NSFont)?
+
+    private static func fonts() -> (regular: NSFont, bold: NSFont) {
+        let key = typographyKey
+        if let cache, cache.key == key { return (cache.regular, cache.bold) }
+        let fonts: (regular: NSFont, bold: NSFont)
+        if let regular = familyFont(bold: false) {
+            // A family with no bold face keeps the regular face for bold text.
+            fonts = (regular, familyFont(bold: true) ?? regular)
+        } else {
+            fonts = (.monospacedSystemFont(ofSize: size, weight: .regular),
+                     .monospacedSystemFont(ofSize: size, weight: .bold))
+        }
+        cache = (key, fonts.regular, fonts.bold)
+        return fonts
+    }
+
+    /// `Settings.editorFont` at `size`, or nil if the setting is empty or the family is not installed.
+    private static func familyFont(bold: Bool) -> NSFont? {
+        let family = Settings.shared.editorFont
+        guard !family.isEmpty else { return nil }
+        return NSFontManager.shared.font(withFamily: family, traits: bold ? .boldFontMask : [],
+                                         weight: bold ? 9 : 5, size: size)
+    }
 
     /// `--md-mark`
     static let mark = dynamic(light: 0xa1a1a6, dark: 0x636366)
@@ -136,11 +171,36 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
         }
     }
 
-    private static let baseAttributes: [NSAttributedString.Key: Any] = [
-        .font: EditorStyle.font,
-        .paragraphStyle: EditorStyle.paragraphStyle,
-        .foregroundColor: NSColor.labelColor,
-    ]
+    private static var baseAttributes: [NSAttributedString.Key: Any] {
+        [
+            .font: EditorStyle.font,
+            .paragraphStyle: EditorStyle.paragraphStyle,
+            .foregroundColor: NSColor.labelColor,
+        ]
+    }
+
+    // MARK: - Typography
+
+    /// `EditorStyle.typographyKey` of the fonts on the text now.
+    private var appliedTypographyKey = EditorStyle.typographyKey
+
+    /// Puts the current editor font and line height on all of the text, then colours it again.
+    /// Does nothing if the font and size did not change. One attribute-only edit
+    /// (the `applyPendingFonts()` path): no undo, no cursor move.
+    func applyTypography() {
+        let key = EditorStyle.typographyKey
+        guard key != appliedTypographyKey, let storage = textStorage else { return }
+        appliedTypographyKey = key
+        defaultParagraphStyle = EditorStyle.paragraphStyle
+        typingAttributes = Self.baseAttributes
+        let all = NSRange(location: 0, length: storage.length)
+        pendingFontRange = all
+        applyPendingFonts()
+        pendingColors = (all, MarkdownHighlighter.spans(in: storage.string as NSString, lineRange: all))
+        applyPendingColors()
+        (enclosingScrollView?.verticalRulerView as? LineNumberRuler)?.updateThickness()
+        setNeedsDisplay(visibleRect)
+    }
 
     // MARK: - Lines
 
@@ -361,7 +421,7 @@ class MarkdownTextView: NSTextView, NSTextStorageDelegate {
         super.setNeedsDisplay(rect, avoidAdditionalLayout: flag)
     }
 
-    private static let spaceWidth = (" " as NSString).size(withAttributes: [.font: EditorStyle.font]).width
+    private static var spaceWidth: CGFloat { (" " as NSString).size(withAttributes: [.font: EditorStyle.font]).width }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)

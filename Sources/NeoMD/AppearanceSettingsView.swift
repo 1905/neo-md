@@ -1,4 +1,5 @@
 import AppKit
+import MDCore
 
 /// Settings → Appearance: Theme, Reading font, Editor font, Text size. Every
 /// control writes `Settings.shared` at once and follows `Settings.didChange`.
@@ -86,21 +87,15 @@ final class AppearanceSettingsView: NSView {
         editorName.stringValue = Self.displayName(settings.editorFont, fallback: "SF Mono")
         readingReset.isHidden = settings.readingFont.isEmpty
         editorReset.isHidden = settings.editorFont.isEmpty
-        sizeLabel.stringValue = "\(Int((Self.factor(step: settings.fontScale) * 100).rounded())) %"
-        sizeStepper.setEnabled(settings.fontScale > Settings.fontScaleSteps.lowerBound, forSegment: 0)
-        sizeStepper.setEnabled(settings.fontScale < Settings.fontScaleSteps.upperBound, forSegment: 1)
+        sizeLabel.stringValue = "\(Int((FontScale.factor(step: settings.fontScale) * 100).rounded())) %"
+        sizeStepper.setEnabled(settings.fontScale > FontScale.steps.lowerBound, forSegment: 0)
+        sizeStepper.setEnabled(settings.fontScale < FontScale.steps.upperBound, forSegment: 1)
     }
 
     /// The saved family, or "<fallback> (default)" when it is empty or no longer installed.
     private static func displayName(_ family: String, fallback: String) -> String {
         if !family.isEmpty, NSFontManager.shared.availableFontFamilies.contains(family) { return family }
         return "\(fallback) (default)"
-    }
-
-    /// TODO(Task 3): use FontScale.factor from MDCore.
-    private static func factor(step: Int) -> Double {
-        let table: [Int: Double] = [-3: 0.75, -2: 0.85, -1: 0.92, 0: 1.0, 1: 1.1, 2: 1.25, 3: 1.4, 4: 1.6, 5: 1.8]
-        return table[Settings.clampFontScale(step)] ?? 1.0
     }
 
     @objc private func settingsDidChange(_ note: Notification) { refresh() }
@@ -116,7 +111,7 @@ final class AppearanceSettingsView: NSView {
     @objc private func sizeClicked(_ sender: NSSegmentedControl) {
         let current = Settings.shared.fontScale
         let next = current + (sender.selectedSegment == 0 ? -1 : 1)
-        guard Settings.fontScaleSteps.contains(next) else {
+        guard FontScale.steps.contains(next) else {
             NSSound.beep()
             return
         }

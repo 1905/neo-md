@@ -1,4 +1,5 @@
 import AppKit
+import MDCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -28,6 +29,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ⌘, (app menu "Settings…"). Lives on the delegate, so it works with no document window open.
     @objc func showSettings(_ sender: Any?) {
         SettingsWindowController.shared.show()
+    }
+
+    // MARK: - Text size
+
+    /// ⌘+ and ⌘=. One size step up in all windows; a beep at the largest step.
+    @objc func biggerText(_ sender: Any?) {
+        stepFontScale(by: 1)
+    }
+
+    /// ⌘-. One size step down in all windows; a beep at the smallest step.
+    @objc func smallerText(_ sender: Any?) {
+        stepFontScale(by: -1)
+    }
+
+    /// ⌘0. Back to step 0.
+    @objc func actualSizeText(_ sender: Any?) {
+        guard Settings.shared.fontScale != 0 else { return }
+        Settings.shared.fontScale = 0
+    }
+
+    private func stepFontScale(by delta: Int) {
+        let next = Settings.shared.fontScale + delta
+        guard FontScale.steps.contains(next) else {
+            NSSound.beep()
+            return
+        }
+        Settings.shared.fontScale = next
     }
 
     // MARK: - Theme

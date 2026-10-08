@@ -1,4 +1,5 @@
 import Foundation
+import MDCore
 
 enum KeyBindings: String { case standard, vim }
 
@@ -19,13 +20,6 @@ final class Settings {
         static let readingFont = "readingFont"
         static let editorFont = "editorFont"
         static let theme = "theme"
-    }
-
-    /// Text size steps. TODO(Task 3): use `FontScale.steps` / `FontScale.clamp` from MDCore.
-    static let fontScaleSteps = -3...5
-
-    static func clampFontScale(_ step: Int) -> Int {
-        min(max(step, fontScaleSteps.lowerBound), fontScaleSteps.upperBound)
     }
 
     private let defaults: UserDefaults
@@ -58,10 +52,10 @@ final class Settings {
         set { set(newValue, for: Key.outlineVisible) }
     }
 
-    /// Text size step. The setter clamps to the allowed range.
+    /// Text size step (`FontScale.steps`). The setter clamps to the allowed range.
     var fontScale: Int {
-        get { Self.clampFontScale(defaults.integer(forKey: Key.fontScale)) }
-        set { set(Self.clampFontScale(newValue), for: Key.fontScale) }
+        get { FontScale.clamp(defaults.integer(forKey: Key.fontScale)) }
+        set { set(FontScale.clamp(newValue), for: Key.fontScale) }
     }
 
     /// Reading font family. Empty = the system font.

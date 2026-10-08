@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import MDCore
 
 /// The Render view: a `WKWebView` that loads `Template.page` once and updates the article through JS.
 @MainActor
@@ -23,6 +24,8 @@ final class PreviewWebView: NSView {
     private var pendingHTML: String?
     private var pendingLine: Int?
     private var lastHTML: String?
+    /// The typography CSS the page has now. Nil after a (re)load, so the next apply always runs.
+    private var appliedTypography: String?
 
     override init(frame frameRect: NSRect) {
         let config = WKWebViewConfiguration()
@@ -47,6 +50,8 @@ final class PreviewWebView: NSView {
 
         NotificationCenter.default.addObserver(self, selector: #selector(systemColorsChanged),
                                                name: NSColor.systemColorsDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(settingsDidChange),
+                                               name: Settings.didChange, object: nil)
         loadTemplate()
     }
 
@@ -98,12 +103,14 @@ final class PreviewWebView: NSView {
 
     private func loadTemplate() {
         pageLoaded = false
+        appliedTypography = nil
         pendingHTML = lastHTML
         webView.loadHTMLString(Template.page, baseURL: URL(string: "\(AssetSchemeHandler.scheme)://\(AssetSchemeHandler.host)/"))
     }
 
     private func pageDidLoad() {
         pageLoaded = true
+        applyTypography()
         applyAccent()
         applyBodyClass()
         if let html = pendingHTML {
@@ -119,6 +126,21 @@ final class PreviewWebView: NSView {
     private func applyBodyClass() {
         guard pageLoaded else { return }
         webView.evaluateJavaScript("document.body.classList.toggle(\"split\", \(isSplit))", completionHandler: nil)
+    }
+
+    @objc private func settingsDidChange(_ note: Notification) {
+        applyTypography()
+    }
+
+    /// Sets the reading font and text size from `Settings` on the page. Skips the call if nothing changed.
+    func applyTypography() {
+        guard pageLoaded else { return }
+        let settings = Settings.shared
+        let css = HTMLTemplate.typographyCSS(readingFont: settings.readingFont,
+                                             scale: FontScale.factor(step: settings.fontScale))
+        guard css != appliedTypography else { return }
+        appliedTypography = css
+        webView.evaluateJavaScript("setTypography(\(Self.jsStringLiteral(css)))", completionHandler: nil)
     }
 
     @objc private func systemColorsChanged(_ note: Notification) {

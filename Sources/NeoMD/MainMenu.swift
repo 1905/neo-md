@@ -2,7 +2,8 @@ import AppKit
 
 /// The main menu, built in code (the app has no nib).
 /// Custom actions go through the responder chain:
-/// `showSettings:` (handled by `AppDelegate`, so it works with no document window), `showFind:`, `selectTab:` (tag = `DocTab.rawValue`), `toggleOutline:`, `renderNow:`.
+/// `showSettings:`, `biggerText:`, `smallerText:`, `actualSizeText:` (handled by `AppDelegate`, so they work
+/// with no document window), `showFind:`, `selectTab:` (tag = `DocTab.rawValue`), `toggleOutline:`, `renderNow:`.
 @MainActor
 enum MainMenu {
     static func build() -> NSMenu {
@@ -80,6 +81,15 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Hide Outline", Selector(("toggleOutline:")), key: "o", modifiers: [.command, .shift]))
         menu.addItem(item("Render Now", Selector(("renderNow:")), key: "r"))
+        menu.addItem(.separator())
+        menu.addItem(item("Bigger", #selector(AppDelegate.biggerText(_:)), key: "+"))
+        // ⌘+ needs Shift on a US keyboard, so ⌘= does the same. Hidden, but its key still works.
+        let equals = item("Bigger", #selector(AppDelegate.biggerText(_:)), key: "=")
+        equals.isHidden = true
+        equals.allowsKeyEquivalentWhenHidden = true
+        menu.addItem(equals)
+        menu.addItem(item("Smaller", #selector(AppDelegate.smallerText(_:)), key: "-"))
+        menu.addItem(item("Actual Size", #selector(AppDelegate.actualSizeText(_:)), key: "0"))
         return menu
     }
 
