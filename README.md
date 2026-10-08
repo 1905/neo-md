@@ -26,7 +26,7 @@ neo-md is a native macOS app to read and edit Markdown files. It renders CommonM
 
 ## Install from the DMG
 
-1. Open `neo-md-0.1.0.dmg`.
+1. Open `neo-md-0.2.0.dmg`.
 2. Drag `neo-md.app` to the `Applications` folder.
 
 The app is ad-hoc signed and is not notarized. Thus macOS blocks the first launch. To open it the first time, do one of these steps:
@@ -164,7 +164,7 @@ Build the DMG after the app bundle:
 scripts/dmg.sh
 ```
 
-The result is `build/neo-md-0.1.0.dmg`.
+The result is `build/neo-md-0.2.0.dmg`.
 
 Run the tests:
 
