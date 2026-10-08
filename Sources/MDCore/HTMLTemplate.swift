@@ -15,6 +15,9 @@ public enum HTMLTemplate {
       --code-bg: #f3f3f1;
       --rule: #e8e8e6;
       --accent: #0a64d8;
+      --reading-font: \#(systemFontStack);
+      --reading-size: 15.5px;
+      --split-size: 14.5px;
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -30,20 +33,20 @@ public enum HTMLTemplate {
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
     body {
-      font: 15.5px/1.62 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      font: var(--reading-size)/1.62 var(--reading-font);
       -webkit-font-smoothing: antialiased;
       padding: 48px 0 64px;
     }
     article { max-width: 720px; margin: 0 auto; padding: 0 40px; overflow-wrap: break-word; }
-    body.split article { max-width: none; padding: 0 44px; font-size: 14.5px; }
+    body.split article { max-width: none; padding: 0 44px; font-size: var(--split-size); }
     article > :first-child { margin-top: 0; }
     h1, h2, h3, h4, h5, h6 { color: var(--text); }
-    h1 { font-size: 30px; line-height: 1.2; font-weight: 700; letter-spacing: -.01em; margin: 0 0 18px; }
-    h2 { font-size: 21px; line-height: 1.3; font-weight: 650; margin: 34px 0 12px; }
-    h3 { font-size: 12px; line-height: 1.4; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-2); margin: 26px 0 8px; }
-    h4 { font-size: 16px; font-weight: 650; margin: 22px 0 8px; }
-    h5 { font-size: 14px; font-weight: 650; margin: 20px 0 6px; }
-    h6 { font-size: 13px; font-weight: 650; color: var(--text-2); margin: 20px 0 6px; }
+    h1 { font-size: 1.935em; line-height: 1.2; font-weight: 700; letter-spacing: -.01em; margin: 0 0 18px; }
+    h2 { font-size: 1.355em; line-height: 1.3; font-weight: 650; margin: 34px 0 12px; }
+    h3 { font-size: 0.774em; line-height: 1.4; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--text-2); margin: 26px 0 8px; }
+    h4 { font-size: 1.032em; font-weight: 650; margin: 22px 0 8px; }
+    h5 { font-size: 0.903em; font-weight: 650; margin: 20px 0 6px; }
+    h6 { font-size: 0.839em; font-weight: 650; color: var(--text-2); margin: 20px 0 6px; }
     p { margin: 0 0 14px; }
     ul, ol { margin: 0 0 14px; padding-left: 20px; }
     li { margin: 3px 0; }
@@ -61,7 +64,7 @@ public enum HTMLTemplate {
       background: var(--code-bg); padding: 1px 5px; border-radius: 4px;
     }
     pre {
-      font-family: "SF Mono", Menlo, monospace; font-size: 12.5px; line-height: 1.55;
+      font-family: "SF Mono", Menlo, monospace; font-size: 0.806em; line-height: 1.55;
       background: var(--code-bg); border-radius: 8px; padding: 14px 16px;
       white-space: pre-wrap; margin: 0 0 14px;
     }
@@ -69,7 +72,7 @@ public enum HTMLTemplate {
     hr { border: 0; border-top: 1px solid var(--rule); margin: 30px 0; }
     blockquote { margin: 0 0 14px; padding: 2px 0 2px 16px; border-left: 3px solid var(--rule); color: var(--text-2); }
     blockquote > :last-child { margin-bottom: 0; }
-    table { display: block; overflow-x: auto; border-collapse: collapse; margin: 0 0 14px; font-size: 14px; line-height: 1.45; }
+    table { display: block; overflow-x: auto; border-collapse: collapse; margin: 0 0 14px; font-size: 0.903em; line-height: 1.45; }
     th, td { border: 1px solid var(--rule); padding: 6px 12px; text-align: left; vertical-align: top; }
     th { background: var(--code-bg); font-weight: 600; }
     img { max-width: 100%; height: auto; }
@@ -77,7 +80,73 @@ public enum HTMLTemplate {
     .error { color: var(--text-2); text-align: center; margin-top: 80px; }
     """#
 
-    /// A full HTML page with the Render styles and `body` inside `<article>`.
+    /// The system font stack. It is the reading font when the user picks none, and the fallback otherwise.
+    static let systemFontStack = #"-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif"#
+
+    /// A `:root` rule that sets the reading font and the text sizes. Put it after `css` to override the defaults.
+    /// An empty `readingFont` gives only the system font stack. `scale` multiplies 15.5 px (body) and 14.5 px (split).
+    public static func typographyCSS(readingFont: String, scale: Double) -> String {
+        let family = readingFont.isEmpty ? systemFontStack : "\(cssString(readingFont)), \(systemFontStack)"
+        return ":root{--reading-font:\(family);--reading-size:\(px(15.5 * scale));--split-size:\(px(14.5 * scale))}"
+    }
+
+    /// A standalone page for export: Render styles, the reading font and size, `body` inside `<article>`.
+    /// It has no `<script>` and no Content-Security-Policy, so relative images and links load.
+    public static func exportPage(body: String, title: String, readingFont: String, scale: Double) -> String {
+        """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>\(htmlEscape(title))</title>
+        <style>
+        \(css)
+        </style>
+        <style>
+        \(typographyCSS(readingFont: readingFont, scale: scale))
+        </style>
+        </head>
+        <body>
+        <article>
+        \(body)
+        </article>
+        </body>
+        </html>
+        """
+    }
+
+    /// A double-quoted CSS string. Escapes `\` and `"`, and `<` so the text cannot close a `<style>` element.
+    static func cssString(_ text: String) -> String {
+        var out = "\""
+        for ch in text {
+            switch ch {
+            case "\\": out += "\\\\"
+            case "\"": out += "\\\""
+            case "<": out += "\\3c "
+            case "\n", "\r", "\u{0C}": out += " "
+            default: out.append(ch)
+            }
+        }
+        return out + "\""
+    }
+
+    /// A pixel length with at most three decimals and no trailing zeros, for example `19.375px` or `15.5px`.
+    static func px(_ value: Double) -> String {
+        var text = String(format: "%.3f", value)
+        while text.hasSuffix("0") { text.removeLast() }
+        if text.hasSuffix(".") { text.removeLast() }
+        return text + "px"
+    }
+
+    static func htmlEscape(_ text: String) -> String {
+        text.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
+    /// A full HTML page with the Render styles and `body` inside `<article>`, at the default typography.
     /// It has no `<script>`, and its Content-Security-Policy blocks every load except inline styles.
     public static func staticPage(body: String) -> String {
         """
@@ -89,6 +158,9 @@ public enum HTMLTemplate {
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
         \(css)
+        </style>
+        <style>
+        \(typographyCSS(readingFont: "", scale: 1))
         </style>
         </head>
         <body>
