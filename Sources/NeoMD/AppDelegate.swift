@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import MDCore
 
 @MainActor
@@ -14,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyTheme()
+        claimDefaultAppOnce()
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(settingsDidChange),
                            name: Settings.didChange, object: nil)
@@ -27,6 +29,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// ⌘, (app menu "Settings…"). Lives on the delegate, so it works with no document window open.
+    /// First start from an Applications folder: make neo-md the default app for Markdown
+    /// files, without a question (user decision, 2026-10-08). Runs once. Copies outside an
+    /// Applications folder (build output) never claim the default.
+    private func claimDefaultAppOnce() {
+        let settings = Settings.shared
+        guard !settings.claimedDefaultApp,
+              Bundle.main.bundleURL.deletingLastPathComponent().lastPathComponent == "Applications",
+              let markdown = UTType("net.daringfireball.markdown") else { return }
+        settings.claimedDefaultApp = true
+        NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: markdown) { _ in }
+    }
+
     @objc func showSettings(_ sender: Any?) {
         SettingsWindowController.shared.show()
     }
