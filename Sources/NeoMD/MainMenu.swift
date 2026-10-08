@@ -53,6 +53,9 @@ enum MainMenu {
         menu.addItem(item("Close", #selector(NSWindow.performClose(_:)), key: "w"))
         menu.addItem(item("Save", #selector(NSDocument.save(_:)), key: "s"))
         menu.addItem(item("Revert to Saved", #selector(NSDocument.revertToSaved(_:))))
+        menu.addItem(.separator())
+        menu.addItem(item("Export as PDF…", Selector(("exportPDF:")), key: "e", modifiers: [.command, .shift]))
+        menu.addItem(item("Export as HTML…", Selector(("exportHTML:"))))
         return menu
     }
 

@@ -233,6 +233,16 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
     }
 
     /// ⌘F and the magnifier button. Render: the web find bar. Raw / Split: the text view's find bar.
+    @objc func exportPDF(_ sender: Any?) {
+        guard let doc = document as? MarkdownDocument, let window else { return }
+        Exporter.exportPDF(document: doc, window: window)
+    }
+
+    @objc func exportHTML(_ sender: Any?) {
+        guard let doc = document as? MarkdownDocument, let window else { return }
+        Exporter.exportHTML(document: doc, window: window)
+    }
+
     @objc func showFind(_ sender: Any?) {
         contentController.showFind()
     }
