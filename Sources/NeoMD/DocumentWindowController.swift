@@ -16,7 +16,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
                                         target: nil, action: #selector(selectTab(_:)))
     let vimChip = ChipButton(title: "VIM")
     private(set) var outlineItem: NSToolbarItem?
-    private lazy var settingsPopover = SettingsPopover()
+    private var vimItem: NSToolbarItem?
 
     init(document: MarkdownDocument) {
         contentController = ContentController(document: document)
@@ -33,7 +33,9 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
 
         tabControl.target = self
 
-        let toolbar = NSToolbar(identifier: "neo-md.document")
+        // Toolbars with the same identifier sync their items across windows. The VIM item
+        // depends on this window's tab, so every window gets its own identifier.
+        let toolbar = NSToolbar(identifier: "neo-md.document.\(UUID().uuidString)")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
@@ -50,6 +52,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         vimChip.target = self
         vimChip.action = #selector(toggleVim(_:))
         updateVimChip()
+        updateVimItemVisibility()
         updateModeSlot()
         NotificationCenter.default.addObserver(self, selector: #selector(settingsDidChange),
                                                name: Settings.didChange, object: nil)
@@ -98,6 +101,29 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         vimChip.toolTip = on ? "Vim key bindings: on" : "Vim key bindings: off"
     }
 
+    /// The `VIM` chip only matters where the editor is: shown in Raw and Split, hidden in Render.
+    private var showsVimItem: Bool { contentController.currentTab != .render }
+
+    private func updateVimItemVisibility() {
+        let visible = showsVimItem
+        vimChip.isHidden = !visible
+        if #available(macOS 15, *) {
+            vimItem?.isHidden = !visible
+        } else if let toolbar = window?.toolbar {
+            // macOS 14 has no `NSToolbarItem.isHidden`: remove and insert the item.
+            // Before the toolbar loads its items, `toolbarDefaultItemIdentifiers` decides.
+            let items = toolbar.items
+            guard !items.isEmpty else { return }
+            let index = items.firstIndex { $0.itemIdentifier == ItemID.vim }
+            if visible, index == nil {
+                let findIndex = items.firstIndex { $0.itemIdentifier == ItemID.find } ?? items.count
+                toolbar.insertItem(withItemIdentifier: ItemID.vim, at: findIndex)
+            } else if !visible, let index {
+                toolbar.removeItem(at: index)
+            }
+        }
+    }
+
     /// Status bar badge: shown in Raw and Split while Vim is on. The editor is only touched
     /// outside the Render tab, so a Render-only window never builds it.
     private func updateModeSlot() {
@@ -125,11 +151,16 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
     // MARK: - Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ItemID.outline, .flexibleSpace, ItemID.tabs, .flexibleSpace, ItemID.vim, ItemID.find]
+        if #available(macOS 15, *) {
+            return [ItemID.outline, .flexibleSpace, ItemID.tabs, .flexibleSpace, ItemID.vim, ItemID.find]
+        }
+        // macOS 14: the VIM item is present only outside Render (see `updateVimItemVisibility`).
+        return [ItemID.outline, .flexibleSpace, ItemID.tabs, .flexibleSpace]
+            + (showsVimItem ? [ItemID.vim] : []) + [ItemID.find]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        [ItemID.outline, .flexibleSpace, ItemID.tabs, ItemID.vim, ItemID.find]
     }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
@@ -153,6 +184,8 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
             item.label = "Vim"
             item.toolTip = "Vim key bindings"
             item.view = vimChip
+            if #available(macOS 15, *) { item.isHidden = !showsVimItem }
+            vimItem = item
         case ItemID.find:
             item.label = "Find"
             item.toolTip = "Find"
@@ -184,6 +217,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         contentController.select(tab)
         tabControl.selectedSegment = contentController.currentTab.rawValue
         outlineItem?.isEnabled = contentController.currentTab == .render
+        updateVimItemVisibility()
         updateModeSlot()
     }
 
@@ -201,21 +235,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
     /// ⌘F and the magnifier button. Render: the web find bar. Raw / Split: the text view's find bar.
     @objc func showFind(_ sender: Any?) {
         contentController.showFind()
-    }
-
-    /// ⌘, opens the settings popover under the `VIM` chip. A second ⌘, closes it.
-    @objc func showSettings(_ sender: Any?) {
-        if settingsPopover.isShown {
-            settingsPopover.performClose(sender)
-            return
-        }
-        if vimChip.window != nil, !vimChip.isHiddenOrHasHiddenAncestor {
-            settingsPopover.show(relativeTo: vimChip.bounds, of: vimChip, preferredEdge: .minY)
-        } else if let content = window?.contentView {
-            // Toolbar hidden: anchor at the top right of the content.
-            let anchor = NSRect(x: content.bounds.maxX - 40, y: content.bounds.maxY - 1, width: 1, height: 1)
-            settingsPopover.show(relativeTo: anchor, of: content, preferredEdge: .minY)
-        }
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {

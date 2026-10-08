@@ -4,6 +4,8 @@ enum KeyBindings: String { case standard, vim }
 
 enum DocTab: Int { case render = 0, raw = 1, split = 2 }
 
+enum AppTheme: String { case system, light, dark }
+
 /// App-wide settings backed by `UserDefaults`. Every change posts `Settings.didChange`.
 final class Settings {
     static let shared = Settings()
@@ -13,6 +15,17 @@ final class Settings {
         static let keyBindings = "keyBindings"
         static let defaultTab = "defaultTab"
         static let outlineVisible = "outlineVisible"
+        static let fontScale = "fontScale"
+        static let readingFont = "readingFont"
+        static let editorFont = "editorFont"
+        static let theme = "theme"
+    }
+
+    /// Text size steps. TODO(Task 3): use `FontScale.steps` / `FontScale.clamp` from MDCore.
+    static let fontScaleSteps = -3...5
+
+    static func clampFontScale(_ step: Int) -> Int {
+        min(max(step, fontScaleSteps.lowerBound), fontScaleSteps.upperBound)
     }
 
     private let defaults: UserDefaults
@@ -23,6 +36,10 @@ final class Settings {
             Key.keyBindings: KeyBindings.standard.rawValue,
             Key.defaultTab: DocTab.render.rawValue,
             Key.outlineVisible: true,
+            Key.fontScale: 0,
+            Key.readingFont: "",
+            Key.editorFont: "",
+            Key.theme: AppTheme.system.rawValue,
         ])
     }
 
@@ -39,6 +56,29 @@ final class Settings {
     var outlineVisible: Bool {
         get { defaults.bool(forKey: Key.outlineVisible) }
         set { set(newValue, for: Key.outlineVisible) }
+    }
+
+    /// Text size step. The setter clamps to the allowed range.
+    var fontScale: Int {
+        get { Self.clampFontScale(defaults.integer(forKey: Key.fontScale)) }
+        set { set(Self.clampFontScale(newValue), for: Key.fontScale) }
+    }
+
+    /// Reading font family. Empty = the system font.
+    var readingFont: String {
+        get { defaults.string(forKey: Key.readingFont) ?? "" }
+        set { set(newValue, for: Key.readingFont) }
+    }
+
+    /// Editor font family. Empty = SF Mono.
+    var editorFont: String {
+        get { defaults.string(forKey: Key.editorFont) ?? "" }
+        set { set(newValue, for: Key.editorFont) }
+    }
+
+    var theme: AppTheme {
+        get { AppTheme(rawValue: defaults.string(forKey: Key.theme) ?? "") ?? .system }
+        set { set(newValue.rawValue, for: Key.theme) }
     }
 
     private func set(_ value: Any, for key: String) {

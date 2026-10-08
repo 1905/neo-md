@@ -1,13 +1,12 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// The ⌘, popover (mockup frame 14). Rows: Key bindings (Normal / Vim),
-/// Theme ("Follows macOS"), Open files in (Render / Raw), Default app. Every
-/// control writes `Settings.shared` at once; the popover also follows
+/// Settings → General: Key bindings (Normal / Vim), Open files in (Render / Raw),
+/// Default app. Every control writes `Settings.shared` at once and follows
 /// `Settings.didChange`. The Default app row reads the system state each time
-/// the popover opens.
+/// the pane shows.
 @MainActor
-final class SettingsPopover: NSPopover {
+final class GeneralSettingsView: NSView {
     private let keyBindings = NSSegmentedControl(labels: ["Normal", "Vim"], trackingMode: .selectOne,
                                                  target: nil, action: nil)
     private let openIn = NSSegmentedControl(labels: ["Render", "Raw"], trackingMode: .selectOne,
@@ -17,10 +16,8 @@ final class SettingsPopover: NSPopover {
     private let defaultError = NSTextField(wrappingLabelWithString: "")
     private static let markdownType = UTType("net.daringfireball.markdown")
 
-    override init() {
-        super.init()
-        behavior = .transient
-        animates = true
+    init() {
+        super.init(frame: .zero)
         keyBindings.target = self
         keyBindings.action = #selector(keyBindingsChanged(_:))
         openIn.target = self
@@ -28,29 +25,29 @@ final class SettingsPopover: NSPopover {
         makeDefaultButton.target = self
         makeDefaultButton.action = #selector(makeDefaultClicked(_:))
         makeDefaultButton.bezelStyle = .rounded
-        makeDefaultButton.controlSize = .regular
-        makeDefaultButton.font = .systemFont(ofSize: 12)
-        defaultStatus.font = .systemFont(ofSize: 12)
         defaultStatus.textColor = .secondaryLabelColor
-        defaultError.font = .systemFont(ofSize: 11)
+        defaultError.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         defaultError.textColor = .systemRed
-        defaultError.preferredMaxLayoutWidth = 220
+        defaultError.preferredMaxLayoutWidth = 260
         defaultError.isHidden = true
         for control in [keyBindings, openIn] {
             control.segmentStyle = .rounded
-            control.controlSize = .regular
-            control.font = .systemFont(ofSize: 12)
-            control.setWidth(56, forSegment: 0)
-            control.setWidth(56, forSegment: 1)
+            control.setWidth(72, forSegment: 0)
+            control.setWidth(72, forSegment: 1)
         }
 
-        let controller = NSViewController()
-        let content = makeContent()
-        controller.view = content
-        controller.preferredContentSize = content.fittingSize
-        contentViewController = controller
+        let defaultApp = NSStackView(views: [defaultStatus, makeDefaultButton, defaultError])
+        defaultApp.orientation = .vertical
+        defaultApp.alignment = .leading
+        defaultApp.spacing = 6
+
+        SettingsForm.install(rows: [
+            ("Key bindings:", keyBindings),
+            ("Open files in:", openIn),
+            ("Default app:", defaultApp),
+        ], in: self)
+
         refresh()
-        refreshDefaultApp()
         NotificationCenter.default.addObserver(self, selector: #selector(settingsDidChange),
                                                name: Settings.didChange, object: nil)
     }
@@ -58,67 +55,9 @@ final class SettingsPopover: NSPopover {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    private func makeContent() -> NSView {
-        let theme = NSTextField(labelWithString: "Follows macOS")
-        theme.font = .systemFont(ofSize: 12)
-        theme.textColor = .secondaryLabelColor
-
-        let stack = NSStackView(views: [
-            Self.header("Editing"),
-            Self.row("Key bindings", keyBindings),
-            Self.header("Appearance"),
-            Self.row("Theme", theme),
-            Self.row("Open files in", openIn),
-            Self.header("System"),
-            Self.row("Default app", NSStackView(views: [defaultStatus, makeDefaultButton])),
-            defaultError,
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 12
-        stack.setCustomSpacing(8, after: stack.arrangedSubviews[0])
-        stack.setCustomSpacing(18, after: stack.arrangedSubviews[1])
-        stack.setCustomSpacing(8, after: stack.arrangedSubviews[2])
-        stack.setCustomSpacing(18, after: stack.arrangedSubviews[4])
-        stack.setCustomSpacing(8, after: stack.arrangedSubviews[5])
-        stack.setCustomSpacing(6, after: stack.arrangedSubviews[6])
-        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 18, right: 16)
-        for view in stack.arrangedSubviews where view is NSStackView || view === defaultError {
-            view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32).isActive = true
-        }
-        stack.widthAnchor.constraint(equalToConstant: 252).isActive = true
-        return stack
-    }
-
-    private static func header(_ title: String) -> NSTextField {
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 11)
-        label.textColor = .secondaryLabelColor
-        return label
-    }
-
-    private static func row(_ title: String, _ control: NSView) -> NSStackView {
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 13)
-        label.textColor = .labelColor
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let row = NSStackView(views: [label, spacer, control])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 8
-        return row
-    }
-
     private func refresh() {
         keyBindings.selectedSegment = Settings.shared.keyBindings == .vim ? 1 : 0
         openIn.selectedSegment = Settings.shared.defaultTab == .raw ? 1 : 0
-    }
-
-    override func show(relativeTo positioningRect: NSRect, of positioningView: NSView,
-                       preferredEdge: NSRectEdge) {
-        refreshDefaultApp()
-        super.show(relativeTo: positioningRect, of: positioningView, preferredEdge: preferredEdge)
     }
 
     /// True when Launch Services opens Markdown files with this app bundle.
@@ -132,7 +71,7 @@ final class SettingsPopover: NSPopover {
 
     /// Shows "neo-md is the default" or the "Make default" button, plus an
     /// optional error line under the row.
-    private func refreshDefaultApp(error: String? = nil) {
+    func refreshDefaultApp(error: String? = nil) {
         showDefaultState(isDefault: isDefaultApp(), error: error)
     }
 
@@ -143,13 +82,6 @@ final class SettingsPopover: NSPopover {
         makeDefaultButton.isEnabled = true
         defaultError.stringValue = error ?? ""
         defaultError.isHidden = error == nil
-        resizeToFit()
-    }
-
-    private func resizeToFit() {
-        guard let view = contentViewController?.view else { return }
-        view.layoutSubtreeIfNeeded()
-        contentViewController?.preferredContentSize = view.fittingSize
     }
 
     @objc private func makeDefaultClicked(_ sender: NSButton) {
@@ -182,5 +114,36 @@ final class SettingsPopover: NSPopover {
 
     @objc private func openInChanged(_ sender: NSSegmentedControl) {
         Settings.shared.defaultTab = sender.selectedSegment == 1 ? .raw : .render
+    }
+}
+
+/// The two-column form of the Settings panes: right-aligned labels, controls on the left edge.
+@MainActor
+enum SettingsForm {
+    static let width: CGFloat = 480
+
+    static func install(rows: [(String, NSView)], in view: NSView) {
+        let grid = NSGridView(views: rows.map { title, control in
+            [NSTextField(labelWithString: title), control]
+        })
+        grid.rowSpacing = 14
+        grid.columnSpacing = 10
+        grid.column(at: 0).xPlacement = .trailing
+        grid.column(at: 1).xPlacement = .leading
+        grid.rowAlignment = .firstBaseline
+        // Stacks and other baseline-less views align at the top of the row.
+        for index in 0..<grid.numberOfRows where rows[index].1 is NSStackView {
+            grid.row(at: index).yPlacement = .top
+            grid.row(at: index).rowAlignment = .none
+        }
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(grid)
+        NSLayoutConstraint.activate([
+            view.widthAnchor.constraint(equalToConstant: width),
+            grid.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
+            grid.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -24),
+            grid.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            grid.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 20),
+        ])
     }
 }

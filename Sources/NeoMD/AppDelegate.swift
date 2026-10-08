@@ -12,7 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        applyTheme()
         let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(settingsDidChange),
+                           name: Settings.didChange, object: nil)
         center.addObserver(self, selector: #selector(windowDidBecomeKey),
                            name: NSWindow.didBecomeKeyNotification, object: nil)
         center.addObserver(self, selector: #selector(windowWillClose),
@@ -20,6 +23,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.welcomeDelay) { [weak self] in
             MainActor.assumeIsolated { self?.showWelcomeIfNoDocuments() }
         }
+    }
+
+    /// ⌘, (app menu "Settings…"). Lives on the delegate, so it works with no document window open.
+    @objc func showSettings(_ sender: Any?) {
+        SettingsWindowController.shared.show()
+    }
+
+    // MARK: - Theme
+
+    @objc private func settingsDidChange(_ note: Notification) {
+        applyTheme()
+    }
+
+    /// `system` follows macOS (`nil`); `light` and `dark` force the app appearance.
+    private func applyTheme() {
+        let name: NSAppearance.Name?
+        switch Settings.shared.theme {
+        case .system: name = nil
+        case .light: name = .aqua
+        case .dark: name = .darkAqua
+        }
+        guard NSApp.appearance?.name != name else { return }
+        NSApp.appearance = name.flatMap { NSAppearance(named: $0) }
     }
 
     /// Dock click with no visible window: show the welcome window. Minimized documents come back as usual.

@@ -2,7 +2,7 @@ import AppKit
 
 /// The main menu, built in code (the app has no nib).
 /// Custom actions go through the responder chain:
-/// `showSettings:`, `showFind:`, `selectTab:` (tag = `DocTab.rawValue`), `toggleOutline:`, `renderNow:`.
+/// `showSettings:` (handled by `AppDelegate`, so it works with no document window), `showFind:`, `selectTab:` (tag = `DocTab.rawValue`), `toggleOutline:`, `renderNow:`.
 @MainActor
 enum MainMenu {
     static func build() -> NSMenu {
@@ -21,7 +21,7 @@ enum MainMenu {
         let menu = NSMenu(title: "neo-md")
         menu.addItem(item("About neo-md", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
         menu.addItem(.separator())
-        menu.addItem(item("Settings…", Selector(("showSettings:")), key: ","))
+        menu.addItem(item("Settings…", #selector(AppDelegate.showSettings(_:)), key: ","))
         menu.addItem(.separator())
         menu.addItem(item("Hide neo-md", #selector(NSApplication.hide(_:)), key: "h"))
         menu.addItem(item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), key: "h",
