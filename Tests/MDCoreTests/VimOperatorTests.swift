@@ -23,6 +23,8 @@ private func check(_ c: EditCase) {
         // `dw` on the last word of a line stops at that line's end, whatever the next line holds.
         .init("one\n  two\nthree", 0, "dw", "\n  two\nthree", 0, .normal),
         .init("foo\n\nbar", 0, "dw", "\n\nbar", 0, .normal),
+        // `dw` on an empty line deletes that line, as in Vim.
+        .init("a\n\nb", 2, "dw", "a\nb", 2, .normal),
         .init("one\r\n  two", 0, "dw", "\r\n  two", 0, .normal),
         .init("a b\n  c\nd", 0, "2dw", "\n  c\nd", 0, .normal),
         // Only the last `w` step stops at the line end; earlier steps cross lines.
@@ -101,6 +103,7 @@ private func check(_ c: EditCase) {
         .init("foo bar baz", 0, "c2w", " baz", 0, .insert),
         .init("foo  bar", 3, "cw", "foo bar", 3, .insert),         // on a blank: one character
         .init("one\n  two", 0, "cw", "\n  two", 0, .insert),
+        .init("a\n\nb", 2, "cw", "a\n\nb", 2, .insert),         // empty line: insert only
         .init("foo bar", 4, "C", "foo ", 4, .insert),
         .init("foo bar", 4, "c$", "foo ", 4, .insert),
         .init("a\nbc\nd", 2, "cc", "a\n\nd", 2, .insert),
@@ -147,6 +150,7 @@ private func check(_ c: EditCase) {
         ("one\r\n  two", 0, "yw", "one"),
         ("a\nb", 0, "yy", "a\n"),
         ("a\nb", 2, "yy", "b\n"),
+        ("a\n\nb", 2, "yw", "\n"),
         ("foo bar", 0, "vey", "foo"),
         ("a\nb\nc", 0, "Vjy", "a\nb\n"),
     ])
@@ -156,6 +160,17 @@ private func check(_ c: EditCase) {
         #expect(r.actions.contains(.copyToPasteboard(copied)))
         #expect(e.register == copied)
         #expect(r.text == text)
+    }
+
+    /// `yw` on an empty line yanks that line linewise, as `yy` does.
+    @Test func ywOnAnEmptyLineYanksItLinewise() {
+        let e = VimEngine()
+        let r = run("a\n\nb", cursor: 2, "yw", engine: e)
+        #expect(e.register == "\n")
+        #expect(e.registerIsLinewise)
+        #expect(r.text == "a\n\nb")
+        #expect(r.cursor == NSRange(location: 2, length: 0))
+        #expect(!r.actions.contains(.beep))
     }
 
     @Test func pasteWithAnEmptyRegisterBeeps() {
@@ -251,6 +266,10 @@ private func check(_ c: EditCase) {
         .init("foo\nbar foo", 0, "/bar<CR>", 4),
         .init("a foo b foo", 0, "/foo<CR>/<CR>", 8),             // empty pattern reuses the last one
         .init("abc", 0, "/b<BS>c<CR>", 2),
+        // Backward search finds a match that starts before the cursor and ends after it.
+        .init("banana", 0, "/ana<CR>nN", 1),
+        .init("banana", 0, "/ana<CR>N", 3),                      // backward wrap from the first match
+        .init("foo foo foo", 0, "/foo<CR>nN", 4),                // plain backward step
     ]
 
     @Test(arguments: cases)
