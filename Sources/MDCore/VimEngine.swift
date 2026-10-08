@@ -13,6 +13,7 @@ public final class VimEngine {
     private var pendingCount: Int?
     /// `g` typed, waiting for the second key (`gg`).
     private var pendingG = false
+    private var pendingZ = false
     /// `d c y` typed, waiting for a motion or a second `d c y`.
     private var pendingOperator: VimOperator?
     /// Count typed before the operator (`2` in `2dw`).
@@ -123,6 +124,20 @@ public final class VimEngine {
         if key.control {
             if key.chars == "r", pendingOperator == nil { return Array(repeating: .redo, count: takeCount()) }
             return beep()
+        }
+        // `ZZ` = `:x` (save and close), `ZQ` = `:q!` (close without saving).
+        if pendingZ {
+            clearPending()
+            switch key.chars {
+            case "Z": return [.save, .close]
+            case "Q": return [.forceClose]
+            default: return beep()
+            }
+        }
+        if key.chars == "Z", pendingOperator == nil, !pendingG {
+            pendingCount = nil
+            pendingZ = true
+            return []
         }
         switch motionKey(key) {
         case .pending: return []
@@ -522,6 +537,7 @@ public final class VimEngine {
     private func clearPending() {
         pendingCount = nil
         pendingG = false
+        pendingZ = false
         pendingOperator = nil
         operatorCount = nil
     }

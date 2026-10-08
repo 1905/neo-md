@@ -116,7 +116,7 @@ struct EditCase: CustomTestStringConvertible, Sendable {
         .init("ab\ncd", 3, "h", 3),              // h stops at column 0
         .init("abc", 0, "k", 0),
         .init("abc", 0, "j", 0),
-        .init("abc", 0, "Z", 0),
+        .init("abc", 0, "Zx", 0),             // Z then anything but Z or Q
         .init("abc", 0, "gZ", 0),
         .init("abc", 0, "<C-x>", 0),
         .init("a\n\nb", 2, "x", 2),
@@ -133,8 +133,30 @@ struct EditCase: CustomTestStringConvertible, Sendable {
     }
 
     @Test func countIsClearedAfterBeep() {
-        // "3Z" beeps and drops the count, so "l" moves one character.
-        let r = run("abcdef", cursor: 0, "3Zl")
+        // "3Zx" beeps and drops the count, so "l" moves one character.
+        let r = run("abcdef", cursor: 0, "3Zxl")
+        #expect(r.cursor.location == 1)
+    }
+}
+
+@Suite struct VimZCommandTests {
+    @Test func zzSavesAndCloses() {
+        let r = run("abc", cursor: 1, "ZZ")
+        #expect(r.actions.contains(.save))
+        #expect(r.actions.contains(.close))
+        #expect(r.actions.firstIndex(of: .save)! < r.actions.firstIndex(of: .close)!)
+        #expect(r.text == "abc")
+    }
+
+    @Test func zqClosesWithoutSaving() {
+        let r = run("abc", cursor: 1, "ZQ")
+        #expect(r.actions.contains(.forceClose))
+        #expect(!r.actions.contains(.save))
+    }
+
+    @Test func escapeCancelsZ() {
+        let r = run("abc", cursor: 0, "Z<Esc>l")
+        #expect(!r.actions.contains(.save))
         #expect(r.cursor.location == 1)
     }
 }

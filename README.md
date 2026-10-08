@@ -137,6 +137,8 @@ Select **Vim** in the **Key bindings** row of Settings > General to use these ke
 | `:q` | Close |
 | `:wq`, `:x` | Save and close |
 | `:q!` | Close without saving |
+| `ZZ` | Save and close (same as `:x`) |
+| `ZQ` | Close without saving (same as `:q!`) |
 | `:<number>` | Go to that line |
 
 Yanked text also goes to the macOS clipboard.
