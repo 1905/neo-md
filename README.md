@@ -30,7 +30,7 @@ A Quick Look extension shows the rendered file when you press Space on a `.md` f
 
 ## Install from the DMG
 
-1. Open `neo-md-0.2.0.dmg`.
+1. Open `neo-md-0.2.1.dmg`.
 2. Drag `neo-md.app` to the `Applications` folder.
 
 The app is ad-hoc signed and is not notarized. Because of this, macOS prevents the first launch. To open the app the first time, do one of these steps:
@@ -44,7 +44,9 @@ The app is ad-hoc signed and is not notarized. Because of this, macOS prevents t
 
 ## Make neo-md the default Markdown app
 
-Do one of these steps:
+The first start of neo-md from an Applications folder makes neo-md the default app for `.md` files. neo-md does this one time only. If you select a different app later, neo-md does not change it again.
+
+To make neo-md the default again, do one of these steps:
 
 - Open Settings (⌘,). Select **General**. Click **Make default** in the **Default app** row. When neo-md is the default, the row shows "neo-md is the default".
 - Or run this command in Terminal:
@@ -170,7 +172,7 @@ Build the DMG after the app bundle:
 scripts/dmg.sh
 ```
 
-The result is `build/neo-md-0.2.0.dmg`.
+The result is `build/neo-md-0.2.1.dmg`.
 
 Run the tests:
 

@@ -21,6 +21,7 @@ final class Settings {
         static let readingFont = "readingFont"
         static let editorFont = "editorFont"
         static let theme = "theme"
+        static let claimedDefaultApp = "claimedDefaultApp"
     }
 
     private let defaults: UserDefaults
@@ -51,6 +52,13 @@ final class Settings {
     var outlineVisible: Bool {
         get { defaults.bool(forKey: Key.outlineVisible) }
         set { set(newValue, for: Key.outlineVisible) }
+    }
+
+    /// True after the first start in an Applications folder made neo-md the default Markdown app.
+    /// Not a user setting, so it posts no change notification.
+    var claimedDefaultApp: Bool {
+        get { defaults.bool(forKey: Key.claimedDefaultApp) }
+        set { defaults.set(newValue, forKey: Key.claimedDefaultApp) }
     }
 
     /// Text size step (`FontScale.steps`). The setter clamps to the allowed range.

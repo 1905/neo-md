@@ -1,0 +1,37 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcrun swift --version
+
+      - name: Test
+        run: swift test
+
+      - name: Bundle
+        run: scripts/bundle.sh
+
+      - name: DMG
+        run: scripts/dmg.sh
+
+      - name: Checksum
+        run: shasum -a 256 build/neo-md-*.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neo-md-dmg
+          path: build/neo-md-*.dmg
+          if-no-files-found: error
