@@ -225,6 +225,12 @@ public final class VimEngine {
             if TextNav.lineIndex(at: target.position, in: text) > TextNav.lineIndex(at: lastStepStart, in: text) {
                 hi = max(lo, TextNav.line(at: lastStepStart, in: text).contentsEnd)
             }
+            // On an empty line that leaves nothing, so Vim operates on the line itself.
+            // `cw` keeps the empty range: it only enters insert mode.
+            let ln = TextNav.line(at: cursor, in: text)
+            if hi == lo, op != .change, ln.start == ln.contentsEnd, ln.end > ln.start {
+                return applyLinewise(op, first: ln, last: ln, text: text, yankCursor: cursor)
+            }
         }
         return applyCharwise(op, range: NSRange(location: lo, length: hi - lo), text: text)
     }
@@ -419,12 +425,15 @@ public final class VimEngine {
     /// Literal search that wraps around the buffer end.
     private func search(_ pattern: String, forward: Bool, count: Int, text: NSString, cursor: Int) -> [VimAction] {
         let all = NSRange(location: 0, length: text.length)
+        let patternLength = (pattern as NSString).length
         var p = cursor
         for _ in 0..<count {
             let from = TextNav.nextGrapheme(after: p, in: text)
+            // Backward: a match may end after the cursor as long as it starts before it.
+            let back = NSRange(location: 0, length: max(0, min(p - 1 + patternLength, text.length)))
             let first = forward
                 ? text.range(of: pattern, options: .literal, range: NSRange(location: from, length: text.length - from))
-                : text.range(of: pattern, options: [.literal, .backwards], range: NSRange(location: 0, length: p))
+                : text.range(of: pattern, options: [.literal, .backwards], range: back)
             let found = first.location != NSNotFound
                 ? first : text.range(of: pattern, options: forward ? .literal : [.literal, .backwards], range: all)
             guard found.location != NSNotFound else { return [.beep] }
