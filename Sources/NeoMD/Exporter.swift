@@ -88,7 +88,7 @@ private final class PDFExportJob: NSObject, WKNavigationDelegate {
     static func start(page: String, documentFolder: URL?, title: String, target: URL, window: NSWindow) {
         let job = PDFExportJob(documentFolder: documentFolder, title: title, target: target, window: window)
         active.append(job)
-        job.webView.loadHTMLString(page, baseURL: URL(string: "\(AssetSchemeHandler.scheme)://\(AssetSchemeHandler.host)/"))
+        job.webView.loadHTMLString(page, baseURL: AssetSchemeHandler.baseURL(for: documentFolder))
     }
 
     private init(documentFolder: URL?, title: String, target: URL, window: NSWindow) {

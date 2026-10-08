@@ -10,7 +10,10 @@ final class PreviewWebView: NSView {
 
     /// Base folder for `mdv-asset://` (images) and relative `.md` links.
     var documentFolder: URL? {
-        didSet { assetHandler.documentFolder = documentFolder }
+        didSet {
+            assetHandler.documentFolder = documentFolder
+            applyBase()
+        }
     }
 
     /// True for the Split tab preview: adds class `split` to `<body>` (narrower padding, full width).
@@ -105,11 +108,12 @@ final class PreviewWebView: NSView {
         pageLoaded = false
         appliedTypography = nil
         pendingHTML = lastHTML
-        webView.loadHTMLString(Template.page, baseURL: URL(string: "\(AssetSchemeHandler.scheme)://\(AssetSchemeHandler.host)/"))
+        webView.loadHTMLString(Template.page, baseURL: AssetSchemeHandler.baseURL(for: nil))
     }
 
     private func pageDidLoad() {
         pageLoaded = true
+        applyBase()
         applyTypography()
         applyAccent()
         applyBodyClass()
@@ -121,6 +125,14 @@ final class PreviewWebView: NSView {
             pendingLine = nil
             scrollToLine(line)
         }
+    }
+
+    /// Points `<base>` at the document folder. Runs before any later `update` call,
+    /// because WebKit runs `evaluateJavaScript` calls in order.
+    private func applyBase() {
+        guard pageLoaded else { return }
+        let href = AssetSchemeHandler.baseURL(for: documentFolder).absoluteString
+        webView.evaluateJavaScript("setBase(\(Self.jsStringLiteral(href)))", completionHandler: nil)
     }
 
     private func applyBodyClass() {
@@ -180,8 +192,10 @@ final class PreviewWebView: NSView {
             NSWorkspace.shared.open(url)
             return
         }
-        guard let folder = documentFolder,
-              let file = AssetSchemeHandler.resolve(url, in: folder),
+        // A `.md` link may point anywhere on disk, parent folders included.
+        // Without a folder (an unsaved document) a relative link has no meaning.
+        guard documentFolder != nil,
+              let file = AssetSchemeHandler.fileURL(for: url),
               WelcomeWindowController.markdownExtensions.contains(file.pathExtension.lowercased()) else { return }
         WelcomeWindowController.open([file])
     }
