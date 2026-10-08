@@ -1,7 +1,7 @@
 import MDCore
 
 /// The live Render page. `PreviewWebView` loads it once and then drives it through JS:
-/// `update(html)`, `scrollToLine(n)`, `setAccent(hex)`.
+/// `setBase(href)`, `update(html)`, `scrollToLine(n)`, `setAccent(hex)`, `setTypography(cssText)`.
 /// On scroll (throttled to 100 ms) the page posts the source line at the top of the view
 /// to the `visibleLine` message handler (body: Int).
 enum Template {
@@ -16,6 +16,9 @@ enum Template {
     <base href="mdv-asset://doc/">
     <style>
     \(HTMLTemplate.css)
+    </style>
+    <style id="typography">
+    \(HTMLTemplate.typographyCSS(readingFont: "", scale: 1))
     </style>
     </head>
     <body>
@@ -37,6 +40,12 @@ enum Template {
         return isNaN(n) ? 0 : n;
       }
 
+      // The document folder as `mdv-asset://doc/<absolute path>/`. Relative links and
+      // images in later `update` calls resolve against it.
+      window.setBase = function (href) {
+        document.querySelector("base").href = href;
+      };
+
       window.update = function (html) {
         var y = window.scrollY;
         content.innerHTML = html;
@@ -55,6 +64,11 @@ enum Template {
 
       window.setAccent = function (hex) {
         document.documentElement.style.setProperty("--accent", hex);
+      };
+
+      // Replaces the reading font and size rule (`HTMLTemplate.typographyCSS`).
+      window.setTypography = function (cssText) {
+        document.getElementById("typography").textContent = cssText;
       };
 
       // Source line of the first top-level block whose bottom is below the top of the view.

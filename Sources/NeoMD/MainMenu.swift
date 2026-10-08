@@ -2,7 +2,8 @@ import AppKit
 
 /// The main menu, built in code (the app has no nib).
 /// Custom actions go through the responder chain:
-/// `showSettings:`, `showFind:`, `selectTab:` (tag = `DocTab.rawValue`), `toggleOutline:`, `renderNow:`.
+/// `showSettings:`, `biggerText:`, `smallerText:`, `actualSizeText:` (handled by `AppDelegate`, so they work
+/// with no document window), `showFind:`, `selectTab:` (tag = `DocTab.rawValue`), `toggleOutline:`, `renderNow:`.
 @MainActor
 enum MainMenu {
     static func build() -> NSMenu {
@@ -21,7 +22,7 @@ enum MainMenu {
         let menu = NSMenu(title: "neo-md")
         menu.addItem(item("About neo-md", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
         menu.addItem(.separator())
-        menu.addItem(item("Settings…", Selector(("showSettings:")), key: ","))
+        menu.addItem(item("Settings…", #selector(AppDelegate.showSettings(_:)), key: ","))
         menu.addItem(.separator())
         menu.addItem(item("Hide neo-md", #selector(NSApplication.hide(_:)), key: "h"))
         menu.addItem(item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), key: "h",
@@ -52,6 +53,9 @@ enum MainMenu {
         menu.addItem(item("Close", #selector(NSWindow.performClose(_:)), key: "w"))
         menu.addItem(item("Save", #selector(NSDocument.save(_:)), key: "s"))
         menu.addItem(item("Revert to Saved", #selector(NSDocument.revertToSaved(_:))))
+        menu.addItem(.separator())
+        menu.addItem(item("Export as PDF…", Selector(("exportPDF:")), key: "e", modifiers: [.command, .shift]))
+        menu.addItem(item("Export as HTML…", Selector(("exportHTML:"))))
         return menu
     }
 
@@ -80,6 +84,15 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Hide Outline", Selector(("toggleOutline:")), key: "o", modifiers: [.command, .shift]))
         menu.addItem(item("Render Now", Selector(("renderNow:")), key: "r"))
+        menu.addItem(.separator())
+        menu.addItem(item("Bigger", #selector(AppDelegate.biggerText(_:)), key: "+"))
+        // ⌘+ needs Shift on a US keyboard, so ⌘= does the same. Hidden, but its key still works.
+        let equals = item("Bigger", #selector(AppDelegate.biggerText(_:)), key: "=")
+        equals.isHidden = true
+        equals.allowsKeyEquivalentWhenHidden = true
+        menu.addItem(equals)
+        menu.addItem(item("Smaller", #selector(AppDelegate.smallerText(_:)), key: "-"))
+        menu.addItem(item("Actual Size", #selector(AppDelegate.actualSizeText(_:)), key: "0"))
         return menu
     }
 

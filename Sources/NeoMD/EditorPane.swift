@@ -67,6 +67,13 @@ final class EditorPane: NSView, NSTextViewDelegate {
                                                name: MarkdownDocument.textDidChange, object: document)
         NotificationCenter.default.addObserver(self, selector: #selector(documentDidSave),
                                                name: MarkdownDocument.didSave, object: document)
+        NotificationCenter.default.addObserver(self, selector: #selector(settingsDidChange),
+                                               name: Settings.didChange, object: nil)
+    }
+
+    /// The editor font or text size may have changed. `applyTypography` skips the work if not.
+    @objc private func settingsDidChange(_ note: Notification) {
+        textView.applyTypography()
     }
 
     /// Typing after a save starts a new undo step, so one undo does not cross the save point.

@@ -1,8 +1,12 @@
 import Foundation
+import MDCore
 
 enum KeyBindings: String { case standard, vim }
 
 enum DocTab: Int { case render = 0, raw = 1, split = 2 }
+
+/// Case order = the order of the Theme segments in Settings → Appearance.
+enum AppTheme: String, CaseIterable { case system, light, dark }
 
 /// App-wide settings backed by `UserDefaults`. Every change posts `Settings.didChange`.
 final class Settings {
@@ -13,6 +17,10 @@ final class Settings {
         static let keyBindings = "keyBindings"
         static let defaultTab = "defaultTab"
         static let outlineVisible = "outlineVisible"
+        static let fontScale = "fontScale"
+        static let readingFont = "readingFont"
+        static let editorFont = "editorFont"
+        static let theme = "theme"
     }
 
     private let defaults: UserDefaults
@@ -23,6 +31,10 @@ final class Settings {
             Key.keyBindings: KeyBindings.standard.rawValue,
             Key.defaultTab: DocTab.render.rawValue,
             Key.outlineVisible: true,
+            Key.fontScale: 0,
+            Key.readingFont: "",
+            Key.editorFont: "",
+            Key.theme: AppTheme.system.rawValue,
         ])
     }
 
@@ -39,6 +51,43 @@ final class Settings {
     var outlineVisible: Bool {
         get { defaults.bool(forKey: Key.outlineVisible) }
         set { set(newValue, for: Key.outlineVisible) }
+    }
+
+    /// Text size step (`FontScale.steps`). The setter clamps to the allowed range.
+    var fontScale: Int {
+        get { FontScale.clamp(defaults.integer(forKey: Key.fontScale)) }
+        set { set(FontScale.clamp(newValue), for: Key.fontScale) }
+    }
+
+    /// The size factor of the current text size step.
+    var textScale: Double { FontScale.factor(step: fontScale) }
+
+    /// One text size step up (`delta` 1) or down (-1). Returns false and changes nothing at a limit.
+    func stepFontScale(by delta: Int) -> Bool {
+        let next = fontScale + delta
+        guard FontScale.steps.contains(next) else { return false }
+        fontScale = next
+        return true
+    }
+
+    /// The preview and export typography rule for the reading font and text size now.
+    var typographyCSS: String { HTMLTemplate.typographyCSS(readingFont: readingFont, scale: textScale) }
+
+    /// Reading font family. Empty = the system font.
+    var readingFont: String {
+        get { defaults.string(forKey: Key.readingFont) ?? "" }
+        set { set(newValue, for: Key.readingFont) }
+    }
+
+    /// Editor font family. Empty = SF Mono.
+    var editorFont: String {
+        get { defaults.string(forKey: Key.editorFont) ?? "" }
+        set { set(newValue, for: Key.editorFont) }
+    }
+
+    var theme: AppTheme {
+        get { AppTheme(rawValue: defaults.string(forKey: Key.theme) ?? "") ?? .system }
+        set { set(newValue.rawValue, for: Key.theme) }
     }
 
     private func set(_ value: Any, for key: String) {

@@ -10,7 +10,8 @@ cd "$(dirname "$0")/.."
 
 APP="build/neo-md.app"
 STAGE="build/dmg"
-DMG="build/neo-md-0.1.0.dmg"
+VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)"
+DMG="build/neo-md-${VERSION}.dmg"
 
 [ -d "$APP" ] || { echo "missing $APP: run scripts/bundle.sh first" >&2; exit 1; }
 

@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import MDCore
 
 /// The Render view: a `WKWebView` that loads `Template.page` once and updates the article through JS.
 @MainActor
@@ -9,7 +10,10 @@ final class PreviewWebView: NSView {
 
     /// Base folder for `mdv-asset://` (images) and relative `.md` links.
     var documentFolder: URL? {
-        didSet { assetHandler.documentFolder = documentFolder }
+        didSet {
+            assetHandler.documentFolder = documentFolder
+            applyBase()
+        }
     }
 
     /// True for the Split tab preview: adds class `split` to `<body>` (narrower padding, full width).
@@ -23,6 +27,8 @@ final class PreviewWebView: NSView {
     private var pendingHTML: String?
     private var pendingLine: Int?
     private var lastHTML: String?
+    /// The typography CSS the page has now. Nil after a (re)load, so the next apply always runs.
+    private var appliedTypography: String?
 
     override init(frame frameRect: NSRect) {
         let config = WKWebViewConfiguration()
@@ -47,6 +53,8 @@ final class PreviewWebView: NSView {
 
         NotificationCenter.default.addObserver(self, selector: #selector(systemColorsChanged),
                                                name: NSColor.systemColorsDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(settingsDidChange),
+                                               name: Settings.didChange, object: nil)
         loadTemplate()
     }
 
@@ -74,7 +82,7 @@ final class PreviewWebView: NSView {
     }
 
     func showError(_ message: String) {
-        update(html: "<p class=\"error\">\(Self.escapeHTML(message))</p>")
+        update(html: "<p class=\"error\">\(HTMLTemplate.htmlEscape(message))</p>")
     }
 
     /// Selects the next (or previous) match, wrapping, case-insensitive. `completion(true)` = a match was found.
@@ -98,12 +106,15 @@ final class PreviewWebView: NSView {
 
     private func loadTemplate() {
         pageLoaded = false
+        appliedTypography = nil
         pendingHTML = lastHTML
-        webView.loadHTMLString(Template.page, baseURL: URL(string: "\(AssetSchemeHandler.scheme)://\(AssetSchemeHandler.host)/"))
+        webView.loadHTMLString(Template.page, baseURL: AssetSchemeHandler.baseURL(for: nil))
     }
 
     private func pageDidLoad() {
         pageLoaded = true
+        applyBase()
+        applyTypography()
         applyAccent()
         applyBodyClass()
         if let html = pendingHTML {
@@ -116,9 +127,30 @@ final class PreviewWebView: NSView {
         }
     }
 
+    /// Points `<base>` at the document folder. Runs before any later `update` call,
+    /// because WebKit runs `evaluateJavaScript` calls in order.
+    private func applyBase() {
+        guard pageLoaded else { return }
+        let href = AssetSchemeHandler.baseURL(for: documentFolder).absoluteString
+        webView.evaluateJavaScript("setBase(\(Self.jsStringLiteral(href)))", completionHandler: nil)
+    }
+
     private func applyBodyClass() {
         guard pageLoaded else { return }
         webView.evaluateJavaScript("document.body.classList.toggle(\"split\", \(isSplit))", completionHandler: nil)
+    }
+
+    @objc private func settingsDidChange(_ note: Notification) {
+        applyTypography()
+    }
+
+    /// Sets the reading font and text size from `Settings` on the page. Skips the call if nothing changed.
+    func applyTypography() {
+        guard pageLoaded else { return }
+        let css = Settings.shared.typographyCSS
+        guard css != appliedTypography else { return }
+        appliedTypography = css
+        webView.evaluateJavaScript("setTypography(\(Self.jsStringLiteral(css)))", completionHandler: nil)
     }
 
     @objc private func systemColorsChanged(_ note: Notification) {
@@ -158,8 +190,10 @@ final class PreviewWebView: NSView {
             NSWorkspace.shared.open(url)
             return
         }
-        guard let folder = documentFolder,
-              let file = AssetSchemeHandler.resolve(url, in: folder),
+        // A `.md` link may point anywhere on disk, parent folders included.
+        // Without a folder (an unsaved document) a relative link has no meaning.
+        guard documentFolder != nil,
+              let file = AssetSchemeHandler.fileURL(for: url),
               WelcomeWindowController.markdownExtensions.contains(file.pathExtension.lowercased()) else { return }
         WelcomeWindowController.open([file])
     }
@@ -171,13 +205,6 @@ final class PreviewWebView: NSView {
         guard let data = try? JSONSerialization.data(withJSONObject: [s]),
               let json = String(data: data, encoding: .utf8) else { return "\"\"" }
         return "\(json)[0]"
-    }
-
-    static func escapeHTML(_ s: String) -> String {
-        s.replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
     }
 }
 

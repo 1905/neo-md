@@ -152,9 +152,13 @@ enum TextNav {
         return .punct
     }
 
-    /// True at the `\n` of an empty line. Vim treats an empty line as a word.
+    /// True at the start of an empty line: its `\n`, or the `\r` of its `\r\n`.
+    /// Vim treats an empty line as a word.
     static func isEmptyLine(at i: Int, in s: NSString) -> Bool {
-        i < s.length && s.character(at: i) == newline && (i == 0 || s.character(at: i - 1) == newline)
+        guard i < s.length, i == 0 || s.character(at: i - 1) == newline else { return false }
+        let c = s.character(at: i)
+        if c == newline { return true }
+        return c == carriageReturn && (i + 1 == s.length || s.character(at: i + 1) == newline)
     }
 
     /// Vim `w`: start of the next word, or `s.length` if there is none.
@@ -167,8 +171,10 @@ enum TextNav {
             while p < len, charClass(at: p, in: s) == start { p = nextGrapheme(after: p, in: s) }
         }
         while p < len, charClass(at: p, in: s) == .blank {
-            if s.character(at: p) == newline, isEmptyLine(at: p + 1, in: s) { return p + 1 }
-            p = nextGrapheme(after: p, in: s)
+            // `\r\n` is one grapheme, so test the grapheme's last unit for the newline.
+            let n = nextGrapheme(after: p, in: s)
+            if s.character(at: n - 1) == newline, isEmptyLine(at: n, in: s) { return n }
+            p = n
         }
         return p
     }

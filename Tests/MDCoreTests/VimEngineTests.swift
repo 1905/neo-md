@@ -60,6 +60,18 @@ struct EditCase: CustomTestStringConvertible, Sendable {
         .init("foo.bar", 4, "b", 3),
         .init("foo\nbar", 4, "b", 0),
         .init("foo\n\nbar", 5, "b", 4),
+        // An empty CRLF line is a word too: the cursor sits on its `\r`.
+        .init("foo\r\n\r\nbar", 0, "w", 5),
+        .init("foo\r\n\r\nbar", 5, "w", 7),
+        .init("foo\r\n\r\n\r\nbar", 5, "w", 7),
+        .init("foo\n\n\nbar", 4, "w", 5),
+        .init("foo\r\n\r\nbar", 7, "b", 5),
+        .init("foo\r\n\r\n\r\nbar", 7, "b", 5),
+        .init("foo\n\n\nbar", 5, "b", 4),
+        .init("\r\nfoo", 2, "b", 0),
+        .init("\nfoo", 1, "b", 0),
+        .init("foo\r\n\r\nbar", 2, "e", 9),
+        .init("foo\n\nbar", 2, "e", 7),
         .init("foo bar", 0, "e", 2),
         .init("foo bar", 2, "e", 6),
         .init("foo.bar", 0, "e", 2),
@@ -116,7 +128,7 @@ struct EditCase: CustomTestStringConvertible, Sendable {
         .init("ab\ncd", 3, "h", 3),              // h stops at column 0
         .init("abc", 0, "k", 0),
         .init("abc", 0, "j", 0),
-        .init("abc", 0, "Z", 0),
+        .init("abc", 0, "Zx", 0),             // Z then anything but Z or Q
         .init("abc", 0, "gZ", 0),
         .init("abc", 0, "<C-x>", 0),
         .init("a\n\nb", 2, "x", 2),
@@ -133,8 +145,30 @@ struct EditCase: CustomTestStringConvertible, Sendable {
     }
 
     @Test func countIsClearedAfterBeep() {
-        // "3Z" beeps and drops the count, so "l" moves one character.
-        let r = run("abcdef", cursor: 0, "3Zl")
+        // "3Zx" beeps and drops the count, so "l" moves one character.
+        let r = run("abcdef", cursor: 0, "3Zxl")
+        #expect(r.cursor.location == 1)
+    }
+}
+
+@Suite struct VimZCommandTests {
+    @Test func zzSavesAndCloses() {
+        let r = run("abc", cursor: 1, "ZZ")
+        #expect(r.actions.contains(.save))
+        #expect(r.actions.contains(.close))
+        #expect(r.actions.firstIndex(of: .save)! < r.actions.firstIndex(of: .close)!)
+        #expect(r.text == "abc")
+    }
+
+    @Test func zqClosesWithoutSaving() {
+        let r = run("abc", cursor: 1, "ZQ")
+        #expect(r.actions.contains(.forceClose))
+        #expect(!r.actions.contains(.save))
+    }
+
+    @Test func escapeCancelsZ() {
+        let r = run("abc", cursor: 0, "Z<Esc>l")
+        #expect(!r.actions.contains(.save))
         #expect(r.cursor.location == 1)
     }
 }

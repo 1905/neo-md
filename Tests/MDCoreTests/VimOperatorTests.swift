@@ -26,6 +26,13 @@ private func check(_ c: EditCase) {
         // `dw` on an empty line deletes that line, as in Vim.
         .init("a\n\nb", 2, "dw", "a\nb", 2, .normal),
         .init("one\r\n  two", 0, "dw", "\r\n  two", 0, .normal),
+        // Empty CRLF lines mirror the LF cases above.
+        .init("foo\r\n\r\nbar", 0, "dw", "\r\n\r\nbar", 0, .normal),
+        .init("a\r\n\r\nb", 3, "dw", "a\r\nb", 3, .normal),
+        .init("foo\n\nbar", 5, "db", "foo\nbar", 4, .normal),
+        .init("foo\r\n\r\nbar", 7, "db", "foo\r\nbar", 5, .normal),
+        .init("a\n\n\nb", 3, "db", "a\n\nb", 2, .normal),
+        .init("a\r\n\r\n\r\nb", 5, "db", "a\r\n\r\nb", 3, .normal),
         .init("a b\n  c\nd", 0, "2dw", "\n  c\nd", 0, .normal),
         // Only the last `w` step stops at the line end; earlier steps cross lines.
         .init("a b\nc d\ne", 2, "2dw", "a d\ne", 2, .normal),
