@@ -1,6 +1,6 @@
 # neo-md
 
-neo-md is a native macOS app to read and edit Markdown files. It renders CommonMark and GitHub Flavored Markdown in a Render view, shows the source text in a Raw editor, and shows both side by side in a Split view. The app follows the macOS light or dark appearance, shows an outline of the headings, and offers standard macOS key bindings or a subset of Vim key bindings in the editor. A Quick Look extension shows the rendered file when you press Space on a `.md` file in Finder.
+neo-md is a native macOS app to read and edit Markdown files. It renders CommonMark and GitHub Flavored Markdown in a Render view, shows the source text in a Raw editor, and shows both side by side in a Split view. The app follows the macOS light or dark appearance or uses a fixed theme, shows an outline of the headings, and offers standard macOS key bindings or a subset of Vim key bindings in the editor. You can change the reading font, the editor font and the text size, and export a document as PDF or HTML. A Quick Look extension shows the rendered file when you press Space on a `.md` file in Finder.
 
 ![Render view with the outline sidebar, light appearance](docs/screenshot-render.png)
 
@@ -11,11 +11,14 @@ neo-md is a native macOS app to read and edit Markdown files. It renders CommonM
 ## Features
 
 - Three views for each document: Render, Raw and Split.
-- The theme follows the macOS light or dark appearance.
+- The theme follows the macOS light or dark appearance, or is always light or always dark.
+- A reading font for the Render view and an editor font for the editor in the Raw and Split views.
+- One text size for the Render view and the editor in all windows. Change it with ⌘+ and ⌘-. neo-md keeps the size after a restart.
 - An outline sidebar in the Render view lists the headings. Click a heading to go to it. You can hide the outline.
 - Standard macOS key bindings or a subset of Vim key bindings in the editor.
 - Live preview: the Split view renders while you type and scrolls the preview with the editor.
 - Find in the document.
+- Export as PDF or as HTML.
 - Reload on disk change. If the file changes on disk and you have no unsaved edits, neo-md loads the new text. If you have unsaved edits, a banner lets you keep your text or reload the file.
 - A welcome window with a drop zone and up to 8 recent files when no document is open.
 - neo-md can be the default app for `.md` files.
@@ -39,7 +42,7 @@ The app is ad-hoc signed and is not notarized. Thus macOS blocks the first launc
 
 Do one of these steps:
 
-- Open Settings (⌘,) and click **Make default** in the **Default app** row. When neo-md is the default, the row shows "neo-md is the default".
+- Open Settings (⌘,), select **General**, and click **Make default** in the **Default app** row. When neo-md is the default, the row shows "neo-md is the default".
 - Or run this command in Terminal:
 
   ```sh
@@ -56,14 +59,26 @@ Images do not show in Quick Look. The Quick Look preview is read-only.
 
 ## Settings
 
-Open Settings with ⌘,. The popover has these rows:
+Open Settings with ⌘,. The Settings window has two panes: **General** and **Appearance**. Click a pane in the toolbar to show it. Each change applies immediately.
+
+### General
 
 | Row | Values |
 |---|---|
 | Key bindings | Normal or Vim |
-| Theme | Follows macOS |
 | Open files in | Render or Raw |
 | Default app | **Make default** button, or "neo-md is the default" |
+
+### Appearance
+
+| Row | Values |
+|---|---|
+| Theme | Follow macOS, Light or Dark |
+| Reading font | The font of the Render view. Click **Change…** to select a font family. Click **Reset** to use the system font again. |
+| Editor font | The font of the editor in the Raw and Split views. Only fixed-pitch (monospaced) font families are accepted. Click **Reset** to use SF Mono again. |
+| Text size | 75 % to 180 %. Click − or + to change the size by one step. |
+
+The font panel sets only the font family. The text size setting sets the size. If a selected font is no longer installed, neo-md uses the default font.
 
 ## Keyboard reference
 
@@ -76,17 +91,28 @@ Open Settings with ⌘,. The popover has these rows:
 | ⌘F | Find |
 | ⌘G / ⇧⌘G | Next match / previous match (Render view find bar) |
 | ⌘R | Render now |
+| ⌘+ or ⌘= | Bigger text |
+| ⌘- | Smaller text |
+| ⌘0 | Actual size (100 %) |
+| ⇧⌘E | Export as PDF |
 | ⌘, | Settings |
 | ⌘O | Open a file |
 | ⌘S | Save |
 | ⌘W | Close the window |
 | ⌘Z / ⇧⌘Z | Undo / redo |
 
-Shortcuts with ⌘ work in every Vim mode.
+Shortcuts with ⌘ work in every Vim mode. The text size shortcuts work in all windows, also when no document is open.
+
+## Export
+
+Select **File > Export as PDF…** (⇧⌘E) or **File > Export as HTML…**. The save dialog opens in the folder of the Markdown file. Both exports use the reading font and the text size from Settings.
+
+- PDF: the document is split into pages with 20 mm margins. The paper size is the default paper size of macOS. The page is always light, also when the app uses the dark theme. Images with relative paths are included in the PDF.
+- HTML: one standalone file that contains all styles. The page follows the light or dark appearance of the browser. Relative links and image paths stay relative. Save the HTML file in the folder of the Markdown file, so that relative images load.
 
 ## Vim key bindings
 
-Select **Vim** in the **Key bindings** row of Settings to use these keys in the editor (Raw and Split views). The status bar shows the current mode.
+Select **Vim** in the **Key bindings** row of Settings > General to use these keys in the editor (Raw and Split views). The status bar shows the current mode.
 
 | Keys | Action |
 |---|---|
