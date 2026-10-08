@@ -35,8 +35,10 @@ final class LineNumberRuler: NSRulerView {
     override var isFlipped: Bool { true }
     override var requiredThickness: CGFloat { width }
 
+    /// Same family as the editor font, at the smaller gutter size.
     private static var numberFont: NSFont {
-        .monospacedDigitSystemFont(ofSize: 11 * EditorStyle.factor, weight: .regular)
+        let size = 11 * EditorStyle.factor
+        return NSFontManager.shared.convert(EditorStyle.font, toSize: size)
     }
 
     /// `max(56, digits × digit width + 24)` for the line count and text size now.
