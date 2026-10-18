@@ -178,10 +178,12 @@ final class Updater {
         try zip.write(to: zipFile)
         try run("/usr/bin/ditto", ["-x", "-k", zipFile.path, work.path])
 
-        let app = work.appendingPathComponent(appName)
-        guard let info = Bundle(url: app)?.infoDictionary,
+        // The zip holds one bundle. Its name can differ from the installed one (a renamed copy).
+        let apps = try fm.contentsOfDirectory(at: work, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "app" }
+        guard apps.count == 1, let app = apps.first, let info = Bundle(url: app)?.infoDictionary,
               info["CFBundleIdentifier"] as? String == bundleID else {
-            throw UpdateError("the update is not \(appName)")
+            throw UpdateError("the update is not neo-md")
         }
         guard info["CFBundleShortVersionString"] as? String == version else {
             throw UpdateError("the update version does not match")
