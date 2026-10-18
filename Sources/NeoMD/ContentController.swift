@@ -12,7 +12,12 @@ final class ContentController: NSViewController {
     static let scrollSyncInterval: TimeInterval = 0.050
 
     let document: MarkdownDocument
-    let preview = PreviewWebView()
+    /// The Render tab preview. Lazy: a window that opens in Raw builds no web view until Render is shown.
+    private(set) lazy var preview: PreviewWebView = {
+        let view = PreviewWebView()
+        view.onVisibleLine = { [weak self] line in self?.outline.highlight(line: line) }
+        return view
+    }()
     /// Headings of the last successful render, Render tab only. Shown while `Settings.shared.outlineVisible`.
     let outline = OutlineSidebar()
     let statusBar = StatusBar()
@@ -148,9 +153,9 @@ final class ContentController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         isLarge = Self.exceedsLiveLimit(document.text)
-        show(renderPane)
+        // No tab yet: the window controller calls `select(_:)` with the default tab next.
+        // The first render happens there, and only for a tab that shows a preview.
         outline.onSelect = { [weak self] item in self?.preview.scrollToLine(item.line) }
-        preview.onVisibleLine = { [weak self] line in self?.outline.highlight(line: line) }
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(settingsDidChange),
                            name: Settings.didChange, object: nil)
@@ -170,7 +175,6 @@ final class ContentController: NSViewController {
         banner.onReload = { [weak self] in self?.reloadFromDisk() }
         findBar.onFind = { [weak self] string, backwards in self?.findInPreview(string, backwards: backwards) }
         findBar.onClose = { [weak self] in self?.hideFindBar() }
-        render()
     }
 
     override func viewDidLayout() {
@@ -373,10 +377,11 @@ final class ContentController: NSViewController {
         updateStatus()
     }
 
-    /// Brings the visible preview up to date. Above the size limit it only shows the last render.
+    /// Brings the visible preview up to date. Above the size limit it only shows the last render;
+    /// the first render runs at any size (like ⌘R), so a large file still opens with its preview.
     private func refreshVisiblePreview() {
         guard visiblePreview != nil else { return }
-        if renderedVersion != textVersion && !isLarge {
+        if renderedVersion != textVersion && (!isLarge || renderedVersion < 0) {
             renderText()
         }
         pushToVisiblePreview()
@@ -418,10 +423,10 @@ final class ContentController: NSViewController {
     private var documentFolder: URL? { document.folderURL }
 
     /// The file moved or was saved under a new name: relative links and images must
-    /// resolve against the new folder, so both previews get it and a fresh push.
-    /// The Split preview is lazy; it gets the folder on its next push.
+    /// resolve against the new folder, so both previews get a fresh push.
+    /// `pushToVisiblePreview` sets the folder first. A hidden preview gets it on its next push;
+    /// a preview that was never shown is not created here.
     @objc private func documentDidMove(_ note: Notification) {
-        preview.documentFolder = documentFolder
         previewVersion = -1
         splitPreviewVersion = -1
         pushToVisiblePreview()
