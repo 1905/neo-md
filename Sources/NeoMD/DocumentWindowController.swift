@@ -7,16 +7,13 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
     enum ItemID {
         static let outline = NSToolbarItem.Identifier("neo-md.outline")
         static let tabs = NSToolbarItem.Identifier("neo-md.tabs")
-        static let vim = NSToolbarItem.Identifier("neo-md.vim")
         static let find = NSToolbarItem.Identifier("neo-md.find")
     }
 
     let contentController: ContentController
     let tabControl = NSSegmentedControl(labels: ["Render", "Raw", "Split"], trackingMode: .selectOne,
                                         target: nil, action: #selector(selectTab(_:)))
-    let vimChip = ChipButton(title: "VIM")
     private(set) var outlineItem: NSToolbarItem?
-    private var vimItem: NSToolbarItem?
 
     init(document: MarkdownDocument) {
         contentController = ContentController(document: document)
@@ -33,7 +30,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
 
         tabControl.target = self
 
-        // Toolbars with the same identifier sync their items across windows. The VIM item
+        // Toolbars with the same identifier sync their items across windows. The outline item
         // depends on this window's tab, so every window gets its own identifier.
         let toolbar = NSToolbar(identifier: "neo-md.document.\(UUID().uuidString)")
         toolbar.delegate = self
@@ -49,10 +46,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         contentController.select(Settings.shared.defaultTab)
         tabControl.selectedSegment = contentController.currentTab.rawValue
 
-        vimChip.target = self
-        vimChip.action = #selector(toggleVim(_:))
-        updateVimChip()
-        updateVimItemVisibility()
         updateModeSlot()
         NotificationCenter.default.addObserver(self, selector: #selector(settingsDidChange),
                                                name: Settings.didChange, object: nil)
@@ -89,39 +82,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
     // MARK: - Vim
 
     @objc private func settingsDidChange(_ note: Notification) {
-        updateVimChip()
         updateModeSlot()
-    }
-
-    /// Dim when off; green text and border when on (`.chip` / `.chip.on` in the mockup).
-    private func updateVimChip() {
-        let on = Settings.shared.keyBindings == .vim
-        vimChip.contentTintColor = on ? VimStyle.normal : .tertiaryLabelColor
-        vimChip.borderColor = on ? VimStyle.normal.withAlphaComponent(0.45) : .separatorColor
-        vimChip.toolTip = on ? "Vim key bindings: on" : "Vim key bindings: off"
-    }
-
-    /// The `VIM` chip only matters where the editor is: shown in Raw and Split, hidden in Render.
-    private var showsVimItem: Bool { contentController.currentTab != .render }
-
-    private func updateVimItemVisibility() {
-        let visible = showsVimItem
-        vimChip.isHidden = !visible
-        if #available(macOS 15, *) {
-            vimItem?.isHidden = !visible
-        } else if let toolbar = window?.toolbar {
-            // macOS 14 has no `NSToolbarItem.isHidden`: remove and insert the item.
-            // Before the toolbar loads its items, `toolbarDefaultItemIdentifiers` decides.
-            let items = toolbar.items
-            guard !items.isEmpty else { return }
-            let index = items.firstIndex { $0.itemIdentifier == ItemID.vim }
-            if visible, index == nil {
-                let findIndex = items.firstIndex { $0.itemIdentifier == ItemID.find } ?? items.count
-                toolbar.insertItem(withItemIdentifier: ItemID.vim, at: findIndex)
-            } else if !visible, let index {
-                toolbar.removeItem(at: index)
-            }
-        }
     }
 
     /// Status bar badge: shown in Raw and Split while Vim is on. The editor is only touched
@@ -143,24 +104,14 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         statusBar.showVim(mode: vim.mode, commandLine: vim.commandLine)
     }
 
-    /// The `VIM` chip: toggles Vim mode for the whole app.
-    @objc func toggleVim(_ sender: Any?) {
-        Settings.shared.keyBindings = Settings.shared.keyBindings == .vim ? .standard : .vim
-    }
-
     // MARK: - Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        if #available(macOS 15, *) {
-            return [ItemID.outline, .flexibleSpace, ItemID.tabs, .flexibleSpace, ItemID.vim, ItemID.find]
-        }
-        // macOS 14: the VIM item is present only outside Render (see `updateVimItemVisibility`).
-        return [ItemID.outline, .flexibleSpace, ItemID.tabs, .flexibleSpace]
-            + (showsVimItem ? [ItemID.vim] : []) + [ItemID.find]
+        [ItemID.outline, .flexibleSpace, ItemID.tabs, .flexibleSpace, ItemID.find]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ItemID.outline, .flexibleSpace, ItemID.tabs, ItemID.vim, ItemID.find]
+        [ItemID.outline, .flexibleSpace, ItemID.tabs, ItemID.find]
     }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
@@ -180,12 +131,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         case ItemID.tabs:
             item.label = "View"
             item.view = tabControl
-        case ItemID.vim:
-            item.label = "Vim"
-            item.toolTip = "Vim key bindings"
-            item.view = vimChip
-            if #available(macOS 15, *) { item.isHidden = !showsVimItem }
-            vimItem = item
         case ItemID.find:
             item.label = "Find"
             item.toolTip = "Find"
@@ -217,7 +162,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         contentController.select(tab)
         tabControl.selectedSegment = contentController.currentTab.rawValue
         outlineItem?.isEnabled = contentController.currentTab == .render
-        updateVimItemVisibility()
         updateModeSlot()
     }
 
@@ -258,40 +202,6 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
             return contentController.currentTab == .render
         default:
             return true
-        }
-    }
-}
-
-/// Toolbar chip: small bordered text button (`VIM`). The owner sets the on/off colours.
-@MainActor
-final class ChipButton: NSButton {
-    var borderColor: NSColor = .separatorColor { didSet { updateBorder() } }
-
-    convenience init(title: String) {
-        self.init(frame: .zero)
-        self.title = title
-        isBordered = false
-        font = .systemFont(ofSize: 11, weight: .semibold)
-        contentTintColor = .tertiaryLabelColor
-        wantsLayer = true
-        layer?.cornerRadius = 5
-        layer?.borderWidth = 1
-        updateBorder()
-    }
-
-    override var intrinsicContentSize: NSSize {
-        let size = super.intrinsicContentSize
-        return NSSize(width: size.width + 16, height: max(size.height + 6, 22))
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        updateBorder()
-    }
-
-    private func updateBorder() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.borderColor = borderColor.cgColor
         }
     }
 }
