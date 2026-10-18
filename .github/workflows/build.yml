@@ -10,6 +10,8 @@ on:
 jobs:
   macos:
     runs-on: macos-15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -17,6 +19,13 @@ jobs:
         run: |
           sw_vers
           xcrun swift --version
+
+      - name: Version matches the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != Info.plist $version" >&2; exit 1; }
+          [ -f "docs/releases/$GITHUB_REF_NAME.md" ] || { echo "missing docs/releases/$GITHUB_REF_NAME.md" >&2; exit 1; }
 
       - name: Test
         run: swift test
@@ -35,3 +44,21 @@ jobs:
           name: neo-md-dmg
           path: build/neo-md-*.dmg
           if-no-files-found: error
+
+      - name: Update zip and feed
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          NEOMD_UPDATE_KEY: ${{ secrets.NEOMD_UPDATE_KEY }}
+        run: |
+          scripts/release-feed.sh
+          cat build/latest.json
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "build/neo-md-$version.dmg" "build/neo-md-$version.zip" build/latest.json \
+            --title "neo-md $version" --notes-file "docs/releases/$GITHUB_REF_NAME.md" --verify-tag
