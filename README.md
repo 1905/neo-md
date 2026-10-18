@@ -30,7 +30,7 @@ A Quick Look extension shows the rendered file when you press Space on a `.md` f
 
 ## Install from the DMG
 
-1. Open `neo-md-0.2.1.dmg`.
+1. Open `neo-md-<version>.dmg`.
 2. Drag `neo-md.app` to the `Applications` folder.
 
 The app is ad-hoc signed and is not notarized. Because of this, macOS prevents the first launch. To open the app the first time, do one of these steps:
@@ -57,6 +57,18 @@ To make neo-md the default again, do one of these steps:
 
   If the command is successful, it prints `default: ok`. The command then stops and does not open a window.
 
+## Updates
+
+neo-md 0.3.0 and later update automatically from the GitHub releases of this repository:
+
+1. neo-md checks for a new version 10 seconds after it starts, then every 6 hours while it runs.
+2. If a new version is available, neo-md downloads it in the background and verifies its signature.
+3. When you quit neo-md, the new version replaces the app. The next start runs the new version.
+
+No dialog shows. Settings > General shows the update status. To stop automatic updates, clear **Install updates automatically**. **Check Now** checks at once.
+
+Updates install only if `neo-md.app` is in an Applications folder that you can write to. neo-md does not update when it runs from the DMG.
+
 ## Quick Look
 
 After you install neo-md, start it one time. This lets macOS register the Quick Look extension. Then select a `.md` file in Finder. Press Space to see the rendered file.
@@ -74,6 +86,7 @@ Open Settings with ⌘,. The Settings window has two panes: **General** and **Ap
 | Key bindings | Normal or Vim |
 | Open files in | Render or Raw |
 | Default app | **Make default** button, or "neo-md is the default" |
+| Updates | **Install updates automatically** (on by default), the update status, and a **Check Now** button |
 
 ### Appearance
 
@@ -172,7 +185,7 @@ Build the DMG after the app bundle:
 scripts/dmg.sh
 ```
 
-The result is `build/neo-md-0.2.1.dmg`.
+The result is `build/neo-md-<version>.dmg`.
 
 Run the tests:
 
