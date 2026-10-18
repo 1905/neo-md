@@ -187,6 +187,14 @@ scripts/dmg.sh
 
 The result is `build/neo-md-<version>.dmg`.
 
+### Release
+
+1. Set the new version in `Resources/Info.plist` and `Resources/QuickLook-Info.plist`.
+2. Write the release notes in `docs/releases/v<version>.md`.
+3. Push the tag `v<version>`. GitHub Actions builds the DMG, the signed update zip and `latest.json`, and publishes the release.
+
+The workflow signs the update zip with the repository secret `NEOMD_UPDATE_KEY`. Its public key is `NeoMDUpdatePublicKey` in `Resources/Info.plist`. To sign by hand, run `NEOMD_UPDATE_KEY=<key> scripts/release-feed.sh` after `scripts/bundle.sh`.
+
 Run the tests:
 
 ```sh
