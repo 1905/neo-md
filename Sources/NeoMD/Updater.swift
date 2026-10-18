@@ -18,7 +18,7 @@ final class Updater {
 
     private(set) var status: Status = .idle {
         didSet {
-            Self.log.info("status \(String(describing: self.status), privacy: .public)")
+            Self.log.notice("status \(String(describing: self.status), privacy: .public)")
             NotificationCenter.default.post(name: Self.statusDidChange, object: self)
         }
     }
