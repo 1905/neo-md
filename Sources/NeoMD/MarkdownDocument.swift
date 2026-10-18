@@ -10,6 +10,8 @@ final class MarkdownDocument: NSDocument {
     /// must show the banner. userInfo `deletedKey`: Bool.
     static let diskDidChange = Notification.Name("NeoMDMarkdownDocumentDiskDidChange")
     static let deletedKey = "deleted"
+    /// File name extensions that open as a document (lowercase).
+    static let fileExtensions: Set<String> = ["md", "markdown"]
     /// Posted (object: the document) right before and right after a revert, so views can keep their scroll position.
     static let willRevert = Notification.Name("NeoMDMarkdownDocumentWillRevert")
     static let didRevert = Notification.Name("NeoMDMarkdownDocumentDidRevert")

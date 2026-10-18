@@ -194,8 +194,8 @@ final class PreviewWebView: NSView {
         // Without a folder (an unsaved document) a relative link has no meaning.
         guard documentFolder != nil,
               let file = AssetSchemeHandler.fileURL(for: url),
-              WelcomeWindowController.markdownExtensions.contains(file.pathExtension.lowercased()) else { return }
-        WelcomeWindowController.open([file])
+              MarkdownDocument.fileExtensions.contains(file.pathExtension.lowercased()) else { return }
+        AppDelegate.open([file])
     }
 
     // MARK: - Helpers

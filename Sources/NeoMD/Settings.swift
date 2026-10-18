@@ -22,6 +22,10 @@ final class Settings {
         static let editorFont = "editorFont"
         static let theme = "theme"
         static let claimedDefaultApp = "claimedDefaultApp"
+        static let autoUpdate = "autoUpdate"
+        static let lastUpdateCheck = "lastUpdateCheck"
+        static let updateFeedURL = "NeoMDUpdateFeedURL"
+        static let updateInstallError = "NeoMDUpdateInstallError"
     }
 
     private let defaults: UserDefaults
@@ -36,6 +40,7 @@ final class Settings {
             Key.readingFont: "",
             Key.editorFont: "",
             Key.theme: AppTheme.system.rawValue,
+            Key.autoUpdate: true,
         ])
     }
 
@@ -59,6 +64,29 @@ final class Settings {
     var claimedDefaultApp: Bool {
         get { defaults.bool(forKey: Key.claimedDefaultApp) }
         set { defaults.set(newValue, forKey: Key.claimedDefaultApp) }
+    }
+
+    /// Download and install new versions without a question. Default: on.
+    var autoUpdate: Bool {
+        get { defaults.bool(forKey: Key.autoUpdate) }
+        set { set(newValue, for: Key.autoUpdate) }
+    }
+
+    /// The time of the last successful update check. Not a user setting, so it posts no change notification.
+    var lastUpdateCheck: Date? {
+        get { defaults.object(forKey: Key.lastUpdateCheck) as? Date }
+        set { defaults.set(newValue, forKey: Key.lastUpdateCheck) }
+    }
+
+    /// Test hook: another update feed URL. The signature check still applies. No UI.
+    var updateFeedURL: URL? {
+        defaults.string(forKey: Key.updateFeedURL).flatMap(URL.init(string:))
+    }
+
+    /// The error of the last failed install at quit, shown at the next start. No change notification.
+    var updateInstallError: String? {
+        get { defaults.string(forKey: Key.updateInstallError) }
+        set { defaults.set(newValue, forKey: Key.updateInstallError) }
     }
 
     /// Text size step (`FontScale.steps`). The setter clamps to the allowed range.

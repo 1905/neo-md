@@ -2,7 +2,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// Settings → General: Key bindings (Normal / Vim), Open files in (Render / Raw),
-/// Default app. Every control writes `Settings.shared` at once and follows
+/// Default app, Updates. Every control writes `Settings.shared` at once and follows
 /// `Settings.didChange`. The Default app row reads the system state each time
 /// the pane shows.
 @MainActor
@@ -15,6 +15,9 @@ final class GeneralSettingsView: NSView {
     private let makeDefaultButton = NSButton(title: "Make default", target: nil, action: nil)
     private let defaultError = NSTextField(wrappingLabelWithString: "")
     private static let markdownType = UTType("net.daringfireball.markdown")
+    private let autoUpdate = NSButton(checkboxWithTitle: "Install updates automatically", target: nil, action: nil)
+    private let updateStatus = NSTextField(labelWithString: "")
+    private let checkNowButton = NSButton(title: "Check Now", target: nil, action: nil)
 
     init() {
         super.init(frame: .zero)
@@ -30,6 +33,15 @@ final class GeneralSettingsView: NSView {
         defaultError.textColor = .systemRed
         defaultError.preferredMaxLayoutWidth = 260
         defaultError.isHidden = true
+        autoUpdate.target = self
+        autoUpdate.action = #selector(autoUpdateChanged(_:))
+        checkNowButton.target = self
+        checkNowButton.action = #selector(checkNowClicked(_:))
+        checkNowButton.bezelStyle = .rounded
+        updateStatus.textColor = .secondaryLabelColor
+        updateStatus.lineBreakMode = .byTruncatingTail
+        updateStatus.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        updateStatus.widthAnchor.constraint(lessThanOrEqualToConstant: 300).isActive = true
         for control in [keyBindings, openIn] {
             control.segmentStyle = .rounded
             control.setWidth(72, forSegment: 0)
@@ -41,15 +53,24 @@ final class GeneralSettingsView: NSView {
         defaultApp.alignment = .leading
         defaultApp.spacing = 6
 
+        let updates = NSStackView(views: [autoUpdate, updateStatus, checkNowButton])
+        updates.orientation = .vertical
+        updates.alignment = .leading
+        updates.spacing = 6
+
         SettingsForm.install(rows: [
             ("Key bindings:", keyBindings),
             ("Open files in:", openIn),
             ("Default app:", defaultApp),
+            ("Updates:", updates),
         ], in: self)
 
         refresh()
+        refreshUpdateStatus()
         NotificationCenter.default.addObserver(self, selector: #selector(settingsDidChange),
                                                name: Settings.didChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateStatusDidChange),
+                                               name: Updater.statusDidChange, object: nil)
     }
 
     @available(*, unavailable)
@@ -58,6 +79,34 @@ final class GeneralSettingsView: NSView {
     private func refresh() {
         keyBindings.selectedSegment = Settings.shared.keyBindings == .vim ? 1 : 0
         openIn.selectedSegment = Settings.shared.defaultTab == .raw ? 1 : 0
+        autoUpdate.state = Settings.shared.autoUpdate ? .on : .off
+    }
+
+    private func refreshUpdateStatus() {
+        let updater = Updater.shared
+        let text: String
+        switch updater.status {
+        case .idle: text = "Version \(updater.currentVersion)"
+        case .checking: text = "Checking for updates…"
+        case .upToDate: text = "Up to date (\(updater.currentVersion))"
+        case .available(let version): text = "\(version) is available"
+        case .staged(let version): text = "\(version) installs when neo-md quits"
+        case .failed(let message): text = "Update failed: \(message)"
+        case .notInstallable: text = "Updates need neo-md in an Applications folder"
+        }
+        updateStatus.stringValue = text
+        updateStatus.toolTip = text
+        checkNowButton.isEnabled = updater.status != .checking && updater.status != .notInstallable
+    }
+
+    @objc private func updateStatusDidChange(_ note: Notification) { refreshUpdateStatus() }
+
+    @objc private func autoUpdateChanged(_ sender: NSButton) {
+        Settings.shared.autoUpdate = sender.state == .on
+    }
+
+    @objc private func checkNowClicked(_ sender: NSButton) {
+        Updater.shared.checkNow()
     }
 
     /// True when Launch Services opens Markdown files with this app bundle.
