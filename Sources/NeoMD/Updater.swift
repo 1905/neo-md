@@ -1,5 +1,6 @@
 import AppKit
 import MDCore
+import os
 
 /// Silent updates from GitHub Releases (plans/2026-10-18-auto-update/spec.md).
 /// Checks `latest.json`, downloads and verifies the signed zip, stages the new bundle in Caches,
@@ -16,9 +17,13 @@ final class Updater {
     }
 
     private(set) var status: Status = .idle {
-        didSet { NotificationCenter.default.post(name: Self.statusDidChange, object: self) }
+        didSet {
+            Self.log.info("status \(String(describing: self.status), privacy: .public)")
+            NotificationCenter.default.post(name: Self.statusDidChange, object: self)
+        }
     }
 
+    private static let log = Logger(subsystem: "io.github.1905.neo-md", category: "update")
     static let defaultFeedURL = URL(string: "https://github.com/1905/neo-md/releases/latest/download/latest.json")!
     /// Test hook: another feed URL. The signature check still applies.
     static let feedURLKey = "NeoMDUpdateFeedURL"
@@ -150,8 +155,11 @@ final class Updater {
         return .staged(feed.version)
     }
 
+    /// No disk cache: the feed must be fresh, and zips do not belong in `Cache.db`.
+    private static let session = URLSession(configuration: .ephemeral)
+
     private static func fetch(_ request: URLRequest) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw UpdateError("HTTP \(http.statusCode) for \(request.url?.lastPathComponent ?? "")")
         }
