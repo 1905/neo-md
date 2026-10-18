@@ -55,8 +55,8 @@ final class ContentController: NSViewController {
         line.boxType = .separator
         return line
     }()
-    private var previewAfterOutline: NSLayoutConstraint!
-    private var previewAtLeadingEdge: NSLayoutConstraint!
+    private var previewAfterOutline: NSLayoutConstraint?
+    private var previewAtLeadingEdge: NSLayoutConstraint?
     private lazy var renderPane: NSView = {
         let pane = NSView()
         for view in [outline, outlineDivider, previewColumn] as [NSView] {
@@ -189,14 +189,17 @@ final class ContentController: NSViewController {
     }
 
     /// Shows or hides the outline and its line. Hidden: `previewColumn` takes the full width.
+    /// Before the Render pane exists (a window that opened in Raw) there is nothing to do:
+    /// `renderPane` applies the setting when it builds the constraints.
     private func applyOutlineVisibility() {
+        guard let afterOutline = previewAfterOutline, let atLeadingEdge = previewAtLeadingEdge else { return }
         let visible = Settings.shared.outlineVisible
-        let leading: NSLayoutConstraint = visible ? previewAfterOutline : previewAtLeadingEdge
+        let leading = visible ? afterOutline : atLeadingEdge
         guard !leading.isActive else { return }
         outline.isHidden = !visible
         outlineDivider.isHidden = !visible
         // Deactivate the other one first, so the two leading constraints are never active together.
-        (visible ? previewAtLeadingEdge : previewAfterOutline).isActive = false
+        (visible ? atLeadingEdge : afterOutline).isActive = false
         leading.isActive = true
     }
 

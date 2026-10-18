@@ -232,7 +232,9 @@ final class Updater {
     /// The running process keeps its mapped files, so moving its bundle is safe. On a failure
     /// the old bundle goes back and the error shows in Settings at the next start.
     func installStagedUpdate() {
-        guard Settings.shared.autoUpdate, isInstallable, stagedVersion() != nil else { return }
+        // While a check runs, a background task can replace the staged copy. Skip this quit then:
+        // the staged copy stays and installs at a later quit.
+        guard Settings.shared.autoUpdate, !busy, isInstallable, stagedVersion() != nil else { return }
         let old = updateDir.appendingPathComponent("old-\(Int(Date().timeIntervalSince1970)).app")
         do {
             try fm.moveItem(at: bundleURL, to: old)
