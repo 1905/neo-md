@@ -2,3 +2,6 @@
 
 # Move old build output to /tmp/trash instead of deleting it.
 trash() { if [ -e "$1" ]; then mkdir -p /tmp/trash && mv "$1" "/tmp/trash/$(basename "$1").$(date +%Y%m%d-%H%M%S)"; fi; }
+
+# Print one key of a plist: plist <file> <key>.
+plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1"; }

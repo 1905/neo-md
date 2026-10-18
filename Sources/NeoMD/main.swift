@@ -34,6 +34,8 @@ if CommandLine.arguments.contains("--make-default") {
 }
 
 MainActor.assumeIsolated {
+    // The first instance becomes `NSDocumentController.shared`.
+    _ = DocumentController()
     let app = NSApplication.shared
     let delegate = AppDelegate()
     app.delegate = delegate

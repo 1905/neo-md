@@ -4,20 +4,24 @@
 # BASE_URL overrides the download folder (default: the GitHub release of this version).
 set -euo pipefail
 
+# shellcheck source=scripts/lib.sh
+source "$(dirname "$0")/lib.sh"
+
 cd "$(dirname "$0")/.."
 
 APP="build/neo-md.app"
 [ -d "$APP" ] || { echo "missing $APP: run scripts/bundle.sh first" >&2; exit 1; }
 
-plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$APP/Contents/Info.plist"; }
-VERSION="$(plist CFBundleShortVersionString)"
-BUILD="$(plist CFBundleVersion)"
-MIN_OS="$(plist LSMinimumSystemVersion)"
+INFO="$APP/Contents/Info.plist"
+VERSION="$(plist "$INFO" CFBundleShortVersionString)"
+BUILD="$(plist "$INFO" CFBundleVersion)"
+MIN_OS="$(plist "$INFO" LSMinimumSystemVersion)"
 REPO="${GITHUB_REPOSITORY:-1905/neo-md}"
 BASE_URL="${BASE_URL:-https://github.com/$REPO/releases/download/v$VERSION}"
 ZIP="build/neo-md-${VERSION}.zip"
 
-rm -f "$ZIP" build/latest.json
+trash "$ZIP"
+trash build/latest.json
 ditto -c -k --keepParent "$APP" "$ZIP"
 SIZE="$(stat -f %z "$ZIP")"
 SHA="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"

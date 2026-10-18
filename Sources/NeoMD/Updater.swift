@@ -25,10 +25,6 @@ final class Updater {
 
     private static let log = Logger(subsystem: "io.github.1905.neo-md", category: "update")
     static let defaultFeedURL = URL(string: "https://github.com/1905/neo-md/releases/latest/download/latest.json")!
-    /// Test hook: another feed URL. The signature check still applies.
-    static let feedURLKey = "NeoMDUpdateFeedURL"
-    /// The error of the last failed install at quit, shown at the next start.
-    private static let installErrorKey = "NeoMDUpdateInstallError"
     static let firstCheckDelay: TimeInterval = 10
     static let checkInterval: TimeInterval = 6 * 3600
     static let minCheckGap: TimeInterval = 3600
@@ -38,28 +34,26 @@ final class Updater {
     let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     private let bundleURL = Bundle.main.bundleURL
     private let fm = FileManager.default
+    /// `~/Library/Caches/<bundle id>/Update`: downloads, the staged bundle, old bundles.
+    private let updateDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent(Bundle.main.bundleIdentifier ?? "neo-md").appendingPathComponent("Update")
+    /// `staged/<installed bundle name>`: the verified new bundle, waiting for the quit.
+    private let stagedApp: URL
     private var timer: Timer?
+    /// A check runs (feed, download, staging).
     private var busy = false
+    /// A background task verifies or replaces `stagedApp`. The install at quit waits for the next quit.
+    private var staging = false
 
-    private var feedURL: URL {
-        UserDefaults.standard.string(forKey: Self.feedURLKey).flatMap(URL.init(string:)) ?? Self.defaultFeedURL
+    private init() {
+        stagedApp = updateDir.appendingPathComponent("staged").appendingPathComponent(bundleURL.lastPathComponent)
     }
 
-    private var updateDir: URL {
-        let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return caches.appendingPathComponent(Bundle.main.bundleIdentifier ?? "neo-md")
-            .appendingPathComponent("Update")
-    }
-
-    private var stagedApp: URL { updateDir.appendingPathComponent("staged").appendingPathComponent(bundleURL.lastPathComponent) }
-
-    /// The bundle can be replaced: it sits in an Applications folder (or the test feed is set),
-    /// not on a disk image or a translocated path, and its folder and itself are writable.
+    /// The bundle can be replaced: it sits in an Applications folder, not on a disk image or a
+    /// translocated path, and its folder and itself are writable.
     var isInstallable: Bool {
         let path = bundleURL.path
-        let inApplications = bundleURL.deletingLastPathComponent().lastPathComponent == "Applications"
-        let testFeed = UserDefaults.standard.string(forKey: Self.feedURLKey) != nil
-        return (inApplications || testFeed)
+        return Bundle.main.isInApplicationsFolder
             && !path.hasPrefix("/Volumes/") && !path.contains("/AppTranslocation/")
             && fm.isWritableFile(atPath: bundleURL.deletingLastPathComponent().path)
             && fm.isWritableFile(atPath: path)
@@ -68,15 +62,19 @@ final class Updater {
     // MARK: - Start and timer
 
     func start() {
-        removeLeftovers()
-        if let error = UserDefaults.standard.string(forKey: Self.installErrorKey) {
-            UserDefaults.standard.removeObject(forKey: Self.installErrorKey)
+        let staged = stagedVersion()
+        let (dir, stagedDir) = (updateDir, stagedApp.deletingLastPathComponent())
+        Task.detached(priority: .background) {
+            Self.removeLeftovers(in: dir, stagedDir: staged == nil ? stagedDir : nil)
+        }
+        if let error = Settings.shared.updateInstallError {
+            Settings.shared.updateInstallError = nil
             status = .failed(error)
         }
         if !isInstallable {
             status = .notInstallable
-        } else if let version = stagedVersion() {
-            status = .staged(version)
+        } else if let staged {
+            status = .staged(staged)
         }
         NotificationCenter.default.addObserver(self, selector: #selector(settingsDidChange),
                                                name: Settings.didChange, object: nil)
@@ -87,7 +85,7 @@ final class Updater {
 
     @objc private func settingsDidChange(_ note: Notification) {
         if Settings.shared.autoUpdate {
-            if timer == nil { scheduleTimer() }
+            scheduleTimer()
         } else {
             timer?.invalidate()
             timer = nil
@@ -128,9 +126,12 @@ final class Updater {
     }
 
     private func runCheck(stage: Bool) async throws -> Status {
+        let feedURL = Settings.shared.updateFeedURL ?? Self.defaultFeedURL
         var request = URLRequest(url: feedURL, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 30)
         request.setValue("neo-md/\(currentVersion)", forHTTPHeaderField: "User-Agent")
-        let feed = try UpdateFeed.decode(try await Self.fetch(request))
+        let (data, response) = try await Self.session.data(for: request)
+        try Self.checkHTTP(response, request)
+        let feed = try UpdateFeed.decode(data)
 
         let os = ProcessInfo.processInfo.operatingSystemVersion
         let osVersion = "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
@@ -143,14 +144,22 @@ final class Updater {
             throw UpdateFeed.VerifyError.badKey
         }
 
-        let zip = try await Self.fetch(URLRequest(url: feed.url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
-                                                  timeoutInterval: 300))
-        try feed.verify(zip: zip, publicKey: key)
-        let dir = updateDir
-        let appName = bundleURL.lastPathComponent
-        let bundleID = Bundle.main.bundleIdentifier
+        // Download to a file: the zip never sits in memory on the main thread.
+        let zipRequest = URLRequest(url: feed.url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+                                    timeoutInterval: 300)
+        let (download, zipResponse) = try await Self.session.download(for: zipRequest)
+        try Self.checkHTTP(zipResponse, zipRequest)
+        let work = updateDir.appendingPathComponent("unpack-\(UUID().uuidString)")
+        try fm.createDirectory(at: work, withIntermediateDirectories: true)
+        let zipFile = work.appendingPathComponent("update.zip")
+        try fm.moveItem(at: download, to: zipFile)
+
+        let (staged, bundleID) = (stagedApp, Bundle.main.bundleIdentifier)
+        staging = true
+        defer { staging = false }
         try await Task.detached {
-            try Self.unpackAndStage(zip: zip, version: feed.version, bundleID: bundleID, appName: appName, in: dir)
+            try Self.verifyAndStage(zipFile: zipFile, feed: feed, publicKey: key, bundleID: bundleID,
+                                    work: work, stagedApp: staged)
         }.value
         return .staged(feed.version)
     }
@@ -158,25 +167,21 @@ final class Updater {
     /// No disk cache: the feed must be fresh, and zips do not belong in `Cache.db`.
     private static let session = URLSession(configuration: .ephemeral)
 
-    private static func fetch(_ request: URLRequest) async throws -> Data {
-        let (data, response) = try await session.data(for: request)
+    private static func checkHTTP(_ response: URLResponse, _ request: URLRequest) throws {
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw UpdateError("HTTP \(http.statusCode) for \(request.url?.lastPathComponent ?? "")")
         }
-        return data
     }
 
-    /// Unzips into a fresh folder, checks bundle ID, version and code signature,
-    /// then moves the bundle to `staged/`, replacing an older staged copy.
-    nonisolated private static func unpackAndStage(zip: Data, version: String, bundleID: String?,
-                                                   appName: String, in dir: URL) throws {
+    /// Verifies the zip in `work`, unzips it there, checks bundle ID, version and code signature,
+    /// then moves the bundle to `stagedApp`, replacing an older staged copy. Deletes `work`.
+    nonisolated private static func verifyAndStage(zipFile: URL, feed: UpdateFeed, publicKey: String,
+                                                   bundleID: String?, work: URL, stagedApp: URL) throws {
         let fm = FileManager.default
-        let work = dir.appendingPathComponent("unpack-\(UUID().uuidString)")
-        try fm.createDirectory(at: work, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: work) }
-        let zipFile = work.appendingPathComponent("update.zip")
-        try zip.write(to: zipFile)
+        try feed.verify(zip: Data(contentsOf: zipFile, options: .alwaysMapped), publicKey: publicKey)
         try run("/usr/bin/ditto", ["-x", "-k", zipFile.path, work.path])
+        let version = feed.version
 
         // The zip holds one bundle. Its name can differ from the installed one (a renamed copy).
         let apps = try fm.contentsOfDirectory(at: work, includingPropertiesForKeys: nil)
@@ -190,10 +195,10 @@ final class Updater {
         }
         try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
 
-        let stagedDir = dir.appendingPathComponent("staged")
+        let stagedDir = stagedApp.deletingLastPathComponent()
         try? fm.removeItem(at: stagedDir)
         try fm.createDirectory(at: stagedDir, withIntermediateDirectories: true)
-        try fm.moveItem(at: app, to: stagedDir.appendingPathComponent(appName))
+        try fm.moveItem(at: app, to: stagedApp)
     }
 
     nonisolated private static func run(_ tool: String, _ args: [String]) throws {
@@ -209,21 +214,24 @@ final class Updater {
         }
     }
 
-    /// The version of the staged bundle, if it is newer than this one.
+    /// The version of the staged bundle, if it is newer than this one. Reads the plist file
+    /// directly: `Bundle(url:)` caches per path and would miss a newer staged copy.
     private func stagedVersion() -> String? {
-        guard let version = Bundle(url: stagedApp)?
-                .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+        let plist = stagedApp.appendingPathComponent("Contents/Info.plist")
+        guard let version = NSDictionary(contentsOf: plist)?["CFBundleShortVersionString"] as? String,
               UpdateVersion.isNewer(version, than: currentVersion) else { return nil }
         return version
     }
 
-    /// Deletes old bundles from earlier installs, unpack folders, and a staged copy that is not newer.
-    private func removeLeftovers() {
-        guard let items = try? fm.contentsOfDirectory(at: updateDir, includingPropertiesForKeys: nil) else { return }
+    /// Deletes old bundles from earlier installs, unpack folders, and `stagedDir` if given
+    /// (a staged copy that is not newer).
+    nonisolated private static func removeLeftovers(in dir: URL, stagedDir: URL?) {
+        let fm = FileManager.default
+        let items = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
         for item in items where item.lastPathComponent.hasPrefix("old-") || item.lastPathComponent.hasPrefix("unpack-") {
             try? fm.removeItem(at: item)
         }
-        if stagedVersion() == nil { try? fm.removeItem(at: stagedApp.deletingLastPathComponent()) }
+        if let stagedDir { try? fm.removeItem(at: stagedDir) }
     }
 
     // MARK: - Install at quit
@@ -232,21 +240,17 @@ final class Updater {
     /// The running process keeps its mapped files, so moving its bundle is safe. On a failure
     /// the old bundle goes back and the error shows in Settings at the next start.
     func installStagedUpdate() {
-        // While a check runs, a background task can replace the staged copy. Skip this quit then:
-        // the staged copy stays and installs at a later quit.
-        guard Settings.shared.autoUpdate, !busy, isInstallable, stagedVersion() != nil else { return }
+        // While a background task replaces the staged copy, skip this quit: a later quit installs.
+        guard Settings.shared.autoUpdate, !staging, isInstallable, stagedVersion() != nil else { return }
         let old = updateDir.appendingPathComponent("old-\(Int(Date().timeIntervalSince1970)).app")
+        var movedOld = false
         do {
             try fm.moveItem(at: bundleURL, to: old)
-        } catch {
-            UserDefaults.standard.set(Self.message(error), forKey: Self.installErrorKey)
-            return
-        }
-        do {
+            movedOld = true
             try fm.moveItem(at: stagedApp, to: bundleURL)
         } catch {
-            try? fm.moveItem(at: old, to: bundleURL)
-            UserDefaults.standard.set(Self.message(error), forKey: Self.installErrorKey)
+            if movedOld { try? fm.moveItem(at: old, to: bundleURL) }
+            Settings.shared.updateInstallError = Self.message(error)
         }
     }
 
@@ -262,4 +266,12 @@ final class Updater {
 struct UpdateError: Error {
     let message: String
     init(_ message: String) { self.message = message }
+}
+
+extension Bundle {
+    /// The bundle sits directly in a folder named Applications (`/Applications` or `~/Applications`):
+    /// an installed copy, not build output or a disk image.
+    var isInApplicationsFolder: Bool {
+        bundleURL.deletingLastPathComponent().lastPathComponent == "Applications"
+    }
 }

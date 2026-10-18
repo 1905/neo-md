@@ -38,8 +38,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(settingsDidChange),
                            name: Settings.didChange, object: nil)
-        center.addObserver(self, selector: #selector(windowWillClose),
-                           name: NSWindow.willCloseNotification, object: nil)
         Updater.shared.start()
     }
 
@@ -48,35 +46,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Updater.shared.installStagedUpdate()
     }
 
-    /// Opens each URL as a document. Errors show as an alert. When the last open
-    /// finishes and no document is open (every file failed), the app quits.
+    /// Opens each URL as a document. Errors show as an alert. If every file fails,
+    /// `DocumentController` quits the app after the last alert.
     static func open(_ urls: [URL]) {
-        var pending = urls.count
         for url in urls {
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
-                MainActor.assumeIsolated {
-                    if let error { NSApp.presentError(error) }
-                    pending -= 1
-                    if pending == 0 { quitIfNoDocuments() }
-                }
+                if let error { NSApp.presentError(error) }
             }
         }
-    }
-
-    /// The last document window closed: quit. The document leaves `documents`
-    /// after its window closes, so check on the next pass.
-    @objc private func windowWillClose(_ note: Notification) {
-        guard let window = note.object as? NSWindow, window.windowController?.document != nil else { return }
-        DispatchQueue.main.async {
-            MainActor.assumeIsolated { Self.quitIfNoDocuments() }
-        }
-    }
-
-    /// Quits when no document is open and no panel or alert waits for the user.
-    private static func quitIfNoDocuments() {
-        guard NSDocumentController.shared.documents.isEmpty, NSApp.modalWindow == nil,
-              !NSApp.windows.contains(where: { $0 is NSOpenPanel && $0.isVisible }) else { return }
-        NSApp.terminate(nil)
     }
 
     /// First start from an Applications folder: make neo-md the default app for Markdown
@@ -85,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func claimDefaultAppOnce() {
         let settings = Settings.shared
         guard !settings.claimedDefaultApp,
-              Bundle.main.bundleURL.deletingLastPathComponent().lastPathComponent == "Applications",
+              Bundle.main.isInApplicationsFolder,
               let markdown = UTType("net.daringfireball.markdown") else { return }
         settings.claimedDefaultApp = true
         NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: markdown) { _ in }

@@ -30,8 +30,8 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
 
         tabControl.target = self
 
-        // Toolbars with the same identifier sync their items across windows. The outline item
-        // depends on this window's tab, so every window gets its own identifier.
+        // Toolbars with the same identifier sync their items across windows. Each window keeps
+        // its own toolbar, so every window gets its own identifier.
         let toolbar = NSToolbar(identifier: "neo-md.document.\(UUID().uuidString)")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
@@ -79,7 +79,7 @@ final class DocumentWindowController: NSWindowController, NSToolbarDelegate, NSM
         window?.subtitle = parts.joined(separator: " · ")
     }
 
-    // MARK: - Vim
+    // MARK: - Vim mode slot
 
     @objc private func settingsDidChange(_ note: Notification) {
         updateModeSlot()
