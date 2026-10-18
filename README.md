@@ -24,7 +24,7 @@ A Quick Look extension shows the rendered file when you press Space on a `.md` f
 - Find in the document.
 - Export as PDF or as HTML.
 - Reload on disk change. If the file changes on disk and there are no unsaved edits, neo-md loads the new text. If there are unsaved edits, a banner lets you keep your text or reload the file.
-- A welcome window with a drop zone and up to 8 recent files when no document is open.
+- neo-md runs only while a document is open. Start it without a file and it shows the Open panel. Close the last document and neo-md quits.
 - neo-md can be the default app for `.md` files.
 - Quick Look preview in Finder: select a `.md` file and press Space.
 
