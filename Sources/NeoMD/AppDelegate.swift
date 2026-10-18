@@ -40,6 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                            name: Settings.didChange, object: nil)
         center.addObserver(self, selector: #selector(windowWillClose),
                            name: NSWindow.willCloseNotification, object: nil)
+        Updater.shared.start()
+    }
+
+    /// A staged update replaces the bundle now. The next start runs the new version.
+    func applicationWillTerminate(_ notification: Notification) {
+        Updater.shared.installStagedUpdate()
     }
 
     /// Opens each URL as a document. Errors show as an alert. When the last open
